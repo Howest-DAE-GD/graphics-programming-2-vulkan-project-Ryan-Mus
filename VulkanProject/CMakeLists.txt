@@ -47,3 +47,16 @@ target_link_libraries(VulkanProject PRIVATE
 set_target_properties(VulkanProject PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+
+# Kopieer alleen de .spv bestanden naar de build-directory
+file(GLOB SPV_SHADERS "${CMAKE_SOURCE_DIR}/shaders/*.spv")
+
+foreach(SHADER ${SPV_SHADERS})
+    add_custom_command(
+        TARGET VulkanProject POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${SHADER} ${CMAKE_BINARY_DIR}/shaders/
+        COMMENT "📂 Kopiëren van ${SHADER} naar build-directory..."
+    )
+endforeach()
+
