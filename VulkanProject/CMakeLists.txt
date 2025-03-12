@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Vulkan REQUIRED)
 
 if (NOT Vulkan_FOUND OR NOT Vulkan_INCLUDE_DIRS OR NOT Vulkan_LIBRARIES)
-    message(FATAL_ERROR "❌ Vulkan SDK niet gevonden!")
+    message(FATAL_ERROR "Vulkan SDK not found!")
 endif()
 
 include(FetchContent)
@@ -28,7 +28,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+# Vulkan Memory Allocator (VMA)
+FetchContent_Declare(
+    vma
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    GIT_TAG        v3.2.1 # Nieuwste stabiele versie
+)
+FetchContent_MakeAvailable(vma)
+
 set(GLM_INCLUDE_DIR ${glm_SOURCE_DIR})
+set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include)
 
 add_executable(VulkanProject 
     "VulkanProject.cpp" 
@@ -37,6 +46,7 @@ add_executable(VulkanProject
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 
     ${GLM_INCLUDE_DIR}
+    ${VMA_INCLUDE_DIR}
 )
 
 target_link_libraries(VulkanProject PRIVATE 
@@ -48,15 +58,32 @@ set_target_properties(VulkanProject PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
+# Compileer shaders bij iedere build
+set(SHADER_DIR "${CMAKE_SOURCE_DIR}/shaders")
+set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/shaders")
+file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
+
+add_custom_command(
+    OUTPUT ${SHADER_OUT_DIR}/vert.spv ${SHADER_OUT_DIR}/frag.spv
+    COMMAND C:/VulkanSDK/1.3.296.0/Bin/glslc.exe ${SHADER_DIR}/shader.vert -o ${SHADER_OUT_DIR}/vert.spv
+    COMMAND C:/VulkanSDK/1.3.296.0/Bin/glslc.exe ${SHADER_DIR}/shader.frag -o ${SHADER_OUT_DIR}/frag.spv
+    COMMENT "Compiling shaders..."
+    VERBATIM
+)
+
+add_custom_target(CompileShaders DEPENDS ${SHADER_OUT_DIR}/vert.spv ${SHADER_OUT_DIR}/frag.spv)
+
+# Zorg ervoor dat de shaders worden gecompileerd voordat het project wordt gebouwd
+add_dependencies(VulkanProject CompileShaders)
+
 # Kopieer alleen de .spv bestanden naar de build-directory
-file(GLOB SPV_SHADERS "${CMAKE_SOURCE_DIR}/shaders/*.spv")
+file(GLOB SPV_SHADERS "${SHADER_OUT_DIR}/*.spv")
 
 foreach(SHADER ${SPV_SHADERS})
     add_custom_command(
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${SHADER} ${CMAKE_BINARY_DIR}/shaders/
-        COMMENT "📂 Kopiëren van ${SHADER} naar build-directory..."
+        COMMENT "Copying from ${SHADER} to build-directory..."
     )
 endforeach()
-
