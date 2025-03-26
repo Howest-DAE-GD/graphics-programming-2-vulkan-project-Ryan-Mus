@@ -36,8 +36,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vma)
 
+# stb_image
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        master
+)
+FetchContent_MakeAvailable(stb)
+
 set(GLM_INCLUDE_DIR ${glm_SOURCE_DIR})
 set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include)
+set(STB_INCLUDE_DIR ${stb_SOURCE_DIR})
 
 add_executable(VulkanProject 
     "VulkanProject.cpp" 
@@ -47,6 +56,7 @@ target_include_directories(VulkanProject PRIVATE
     ${Vulkan_INCLUDE_DIRS} 
     ${GLM_INCLUDE_DIR}
     ${VMA_INCLUDE_DIR}
+    ${STB_INCLUDE_DIR}
 )
 
 target_link_libraries(VulkanProject PRIVATE 
@@ -85,5 +95,21 @@ foreach(SHADER ${SPV_SHADERS})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${SHADER} ${CMAKE_BINARY_DIR}/shaders/
         COMMENT "Copying from ${SHADER} to build-directory..."
+    )
+endforeach()
+
+# Add textures to build
+set(TEXTURE_DIR "${CMAKE_SOURCE_DIR}/Textures")
+set(TEXTURE_OUT_DIR "${CMAKE_BINARY_DIR}/Textures")
+file(MAKE_DIRECTORY ${TEXTURE_OUT_DIR})
+
+file(GLOB TEXTURE_FILES "${TEXTURE_DIR}/*")
+
+foreach(TEXTURE ${TEXTURE_FILES})
+    add_custom_command(
+        TARGET VulkanProject POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${TEXTURE} ${TEXTURE_OUT_DIR}/
+        COMMENT "Copying texture ${TEXTURE} to build-directory..."
     )
 endforeach()
