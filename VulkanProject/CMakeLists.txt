@@ -44,9 +44,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stb)
 
+# tinyobjloader
+FetchContent_Declare(
+    tinyobjloader
+    GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
+    GIT_TAG        v1.0.6 # Latest stable version
+)
+FetchContent_MakeAvailable(tinyobjloader)
+
 set(GLM_INCLUDE_DIR ${glm_SOURCE_DIR})
 set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include)
 set(STB_INCLUDE_DIR ${stb_SOURCE_DIR})
+set(TINYOBJLOADER_INCLUDE_DIR ${tinyobjloader_SOURCE_DIR})
 
 add_executable(VulkanProject 
     "VulkanProject.cpp" 
@@ -57,6 +66,7 @@ target_include_directories(VulkanProject PRIVATE
     ${GLM_INCLUDE_DIR}
     ${VMA_INCLUDE_DIR}
     ${STB_INCLUDE_DIR}
+    ${TINYOBJLOADER_INCLUDE_DIR}
 )
 
 target_link_libraries(VulkanProject PRIVATE 
@@ -111,5 +121,21 @@ foreach(TEXTURE ${TEXTURE_FILES})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${TEXTURE} ${TEXTURE_OUT_DIR}/
         COMMENT "Copying texture ${TEXTURE} to build-directory..."
+    )
+endforeach()
+
+# Add models to build
+set(MODEL_DIR "${CMAKE_SOURCE_DIR}/models")
+set(MODEL_OUT_DIR "${CMAKE_BINARY_DIR}/models")
+file(MAKE_DIRECTORY ${MODEL_OUT_DIR})
+
+file(GLOB MODEL_FILES "${MODEL_DIR}/*")
+
+foreach(MODEL ${MODEL_FILES})
+    add_custom_command(
+        TARGET VulkanProject POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${MODEL} ${MODEL_OUT_DIR}/
+        COMMENT "Copying model ${MODEL} to build-directory..."
     )
 endforeach()
