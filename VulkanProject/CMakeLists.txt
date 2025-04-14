@@ -52,14 +52,32 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tinyobjloader)
 
+# spdlog
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG        v1.15.2 # Latest stable version
+)
+FetchContent_MakeAvailable(spdlog)
+
 set(GLM_INCLUDE_DIR ${glm_SOURCE_DIR})
 set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include)
 set(STB_INCLUDE_DIR ${stb_SOURCE_DIR})
 set(TINYOBJLOADER_INCLUDE_DIR ${tinyobjloader_SOURCE_DIR})
+set(SPDLOG_INCLUDE_DIR ${spdlog_SOURCE_DIR}/include)
 
 add_executable(VulkanProject 
-    "VulkanProject.cpp" 
-)
+ "VulkanProject.cpp" 
+ "InstanceBuilder.h" 
+ "Window.h" "Window.cpp" 
+ "Instance.h" "Instance.cpp"
+ "Surface.h" "Surface.cpp"
+ "PhysicalDeviceBuilder.h" "PhysicalDeviceBuilder.cpp"
+ "PhysicalDevice.h" "PhysicalDevice.cpp" 
+ "Device.h" "DeviceBuilder.h" 
+ "Device.cpp" "DeviceBuilder.cpp"
+ "SwapChain.h" "SwapChain.cpp"
+ "SwapChainBuilder.h" "SwapChainBuilder.cpp" "RenderPass.h" "RenderPass.cpp" "DescriptorSetLayout.h" "DescriptorSetLayout.cpp" "DescriptorPool.h" "DescriptorPool.cpp" "DescriptorSet.h" "DescriptorSet.cpp")
 
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 
@@ -67,11 +85,13 @@ target_include_directories(VulkanProject PRIVATE
     ${VMA_INCLUDE_DIR}
     ${STB_INCLUDE_DIR}
     ${TINYOBJLOADER_INCLUDE_DIR}
+    ${SPDLOG_INCLUDE_DIR}
 )
 
 target_link_libraries(VulkanProject PRIVATE 
     Vulkan::Vulkan 
     glfw 
+    spdlog::spdlog
 )
 
 set_target_properties(VulkanProject PROPERTIES
