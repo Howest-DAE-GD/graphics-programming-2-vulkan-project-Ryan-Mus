@@ -77,7 +77,7 @@ add_executable(VulkanProject
  "Device.h" "DeviceBuilder.h" 
  "Device.cpp" "DeviceBuilder.cpp"
  "SwapChain.h" "SwapChain.cpp"
- "SwapChainBuilder.h" "SwapChainBuilder.cpp" "RenderPass.h" "RenderPass.cpp"      )
+ "SwapChainBuilder.h" "SwapChainBuilder.cpp" "RenderPass.h" "RenderPass.cpp" "GraphicsPipeline.h" "GraphicsPipeline.cpp" "GraphicsPipelineBuilder.h" "GraphicsPipelineBuilder.cpp"  )
 
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 
