@@ -4,19 +4,26 @@
 #include "CommandPool.h"
 #include "Device.h"
 #include <stdexcept>
+#include <spdlog/spdlog.h>
 
 Image::Image(Device* device, VmaAllocator allocator)
-    : device_(device), allocator_(allocator), image_(VK_NULL_HANDLE), allocation_(VK_NULL_HANDLE) {}
+    : m_pDevice(device), m_Allocator(allocator), m_Image(VK_NULL_HANDLE), m_Allocation(VK_NULL_HANDLE) 
+{
+	spdlog::debug("Image created.");
+}
 
 Image::~Image() {
-    if (image_ != VK_NULL_HANDLE) {
-        vmaDestroyImage(allocator_, image_, allocation_);
+    if (m_Image != VK_NULL_HANDLE) 
+    {
+        vmaDestroyImage(m_Allocator, m_Image, m_Allocation);
     }
+	spdlog::debug("Image destroyed.");
 }
 
 void Image::createImage(uint32_t width, uint32_t height,
-                              VkFormat format, VkImageTiling tiling,
-                              VkImageUsageFlags usage, VmaMemoryUsage memoryUsage) {
+                        VkFormat format, VkImageTiling tiling,
+                        VkImageUsageFlags usage, VmaMemoryUsage memoryUsage) 
+{
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -33,15 +40,18 @@ void Image::createImage(uint32_t width, uint32_t height,
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = memoryUsage;
 
-    if (vmaCreateImage(allocator_, &imageInfo, &allocInfo, &image_, &allocation_, nullptr) != VK_SUCCESS) {
+    if (vmaCreateImage(m_Allocator, &imageInfo, &allocInfo, &m_Image, &m_Allocation, nullptr) != VK_SUCCESS) 
+    {
         throw std::runtime_error("Failed to create image!");
     }
+	spdlog::debug("Image created with width: {}, height: {}", width, height);
 }
 
-VkImageView Image::createImageView(VkFormat format, VkImageAspectFlags aspectFlags) {
+VkImageView Image::createImageView(VkFormat format, VkImageAspectFlags aspectFlags) 
+{
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = image_;
+    viewInfo.image = m_Image;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format;
     viewInfo.subresourceRange.aspectMask = aspectFlags;
@@ -49,15 +59,19 @@ VkImageView Image::createImageView(VkFormat format, VkImageAspectFlags aspectFla
     viewInfo.subresourceRange.layerCount = 1;
 
     VkImageView imageView;
-    if (vkCreateImageView(device_->get(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+    if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) 
+    {
         throw std::runtime_error("Failed to create texture image view!");
     }
+
+	spdlog::debug("Image view created.");
 
     return imageView;
 }
 
 void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQueue,
-                                        VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
+                                  VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) 
+{
     // Record commands to a command buffer
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -66,7 +80,7 @@ void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQue
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device_->get(), &allocInfo, &commandBuffer);
+    vkAllocateCommandBuffers(m_pDevice->get(), &allocInfo, &commandBuffer);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -78,7 +92,7 @@ void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQue
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
     barrier.newLayout = newLayout;
-    barrier.image = image_;
+    barrier.image = m_Image;
     barrier.subresourceRange.aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
         ? VK_IMAGE_ASPECT_DEPTH_BIT
         : VK_IMAGE_ASPECT_COLOR_BIT;
@@ -96,20 +110,23 @@ void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQue
     VkPipelineStageFlags destinationStage;
 
     // Define transitions
-    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) 
+    {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
     // Add other layout transitions as needed
-	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+	else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) 
+    {
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 	}
-	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) 
+    {
 		barrier.srcAccessMask = 0;
 		barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -133,7 +150,9 @@ void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQue
     vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(graphicsQueue);
 
-    vkFreeCommandBuffers(device_->get(), commandPool, 1, &commandBuffer);
+    vkFreeCommandBuffers(m_pDevice->get(), commandPool, 1, &commandBuffer);
+
+    spdlog::debug("Image layout transitioned");
 }
 
 void Image::copyBufferToImage(CommandPool* commandPool, VkBuffer buffer, uint32_t width, uint32_t height)
@@ -155,15 +174,18 @@ void Image::copyBufferToImage(CommandPool* commandPool, VkBuffer buffer, uint32_
         1
     };
 
-    vkCmdCopyBufferToImage(commandBuffer, buffer, image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    vkCmdCopyBufferToImage(commandBuffer, buffer, m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-    commandPool->endSingleTimeCommands(commandBuffer, device_->getGraphicsQueue());
+    commandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+	spdlog::debug("Buffer copied to image.");
 }
 
-VkImage Image::getImage() const {
-    return image_;
+VkImage Image::getImage() const 
+{
+    return m_Image;
 }
 
-VmaAllocation Image::getAllocation() const {
-    return allocation_;
+VmaAllocation Image::getAllocation() const 
+{
+    return m_Allocation;
 }

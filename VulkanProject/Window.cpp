@@ -1,5 +1,6 @@
 #include "Window.h"
 #include <stdexcept>
+#include <spdlog/spdlog.h>
 
 Window::Window(int width, int height, const char* title)
 	: m_Width(width), m_Height(height)
@@ -20,16 +21,21 @@ Window::Window(int width, int height, const char* title)
 
     glfwSetWindowUserPointer(m_Window, this);
     glfwSetFramebufferSizeCallback(m_Window, framebufferResizeCallback);
+
+	spdlog::info("Window \"{}\" created with size : {}x{}", title, width, height);
 }
 
 Window::~Window()
 {
     glfwDestroyWindow(m_Window);
     glfwTerminate();
+	spdlog::debug("Window destroyed.");
 }
 
 void Window::framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
     auto app = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
-    app->framebufferResized = true;
+    app->m_FramebufferResized = true;
+
+	spdlog::debug("FramebufferResizeCallback with size {}x{}", width, height);
 }

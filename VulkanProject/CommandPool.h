@@ -1,8 +1,8 @@
-// CommandPool.h
 #pragma once
 #include <vulkan/vulkan.h>
 
-class CommandPool {
+class CommandPool 
+{
 public:
     CommandPool(VkDevice device, uint32_t queueFamilyIndex);
     ~CommandPool();
@@ -16,6 +16,6 @@ public:
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer, VkQueue queue);
 
 private:
-    VkDevice device_;
-    VkCommandPool commandPool_;
+    VkDevice m_Device;
+    VkCommandPool m_CommandPool;
 };

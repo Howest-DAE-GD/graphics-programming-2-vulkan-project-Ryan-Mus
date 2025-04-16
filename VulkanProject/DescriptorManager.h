@@ -4,7 +4,8 @@
 #include <vector>
 
 class Texture;
-class DescriptorManager {
+class DescriptorManager 
+{
 public:
     DescriptorManager(VkDevice device, size_t maxFramesInFlight);
     ~DescriptorManager();
@@ -21,10 +22,10 @@ public:
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
 
 private:
-    VkDevice device_;
-    size_t maxFramesInFlight_;
+    VkDevice m_Device;
+    size_t m_MaxFramesInFlight;
 
-    VkDescriptorSetLayout descriptorSetLayout_{};
-    VkDescriptorPool descriptorPool_{};
-    std::vector<VkDescriptorSet> descriptorSets_{};
+    VkDescriptorSetLayout m_DescriptorSetLayout{};
+    VkDescriptorPool m_DescriptorPool{};
+    std::vector<VkDescriptorSet> m_DescriptorSets{};
 };

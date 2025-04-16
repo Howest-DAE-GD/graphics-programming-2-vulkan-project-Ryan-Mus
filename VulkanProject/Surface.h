@@ -2,7 +2,8 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-class Surface {
+class Surface 
+{
 public:
     Surface(VkInstance instance, GLFWwindow* window);
     ~Surface();
@@ -10,6 +11,6 @@ public:
     VkSurfaceKHR get() const;
 
 private:
-    VkInstance instance;
-    VkSurfaceKHR surface;
+    VkInstance m_Instance;
+    VkSurfaceKHR m_Surface;
 };

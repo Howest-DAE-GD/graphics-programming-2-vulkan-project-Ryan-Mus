@@ -1,7 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.h>
 
-class RenderPass {
+class RenderPass 
+{
 public:
     RenderPass(VkDevice device, VkFormat swapChainImageFormat, VkFormat depthFormat);
     ~RenderPass();
@@ -10,6 +11,6 @@ public:
 
 private:
     void createRenderPass(VkFormat swapChainImageFormat, VkFormat depthFormat);
-    VkDevice device_;
-    VkRenderPass renderPass_;
+    VkDevice m_Device;
+    VkRenderPass m_RenderPass;
 };

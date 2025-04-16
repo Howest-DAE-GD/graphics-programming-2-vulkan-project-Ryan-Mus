@@ -24,7 +24,8 @@
 #include <vector>
 #include <string>
 
-class Renderer {
+class Renderer 
+{
 public:
     Renderer(Window* window);
     ~Renderer();
@@ -33,7 +34,7 @@ public:
     void drawFrame();
     void cleanup();
 
-	VkDevice getDevice() const { return device_->get(); }
+	VkDevice getDevice() const { return m_pDevice->get(); }
 
 private:
     void initVulkan();
@@ -51,31 +52,31 @@ private:
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
-    Window* window_;
+    Window* m_pWindow;
 
     // Vulkan components
-    Instance* instance_;
-    Surface* surface_;
-    PhysicalDevice* physicalDevice_;
-    Device* device_;
-    SwapChain* swapChain_;
-    RenderPass* renderPass_;
-    DescriptorManager* descriptorManager_;
-    GraphicsPipeline* graphicsPipeline_;
-    CommandPool* commandPool_;
-    SynchronizationObjects* syncObjects_;
+    Instance* m_pInstance;
+    Surface* m_pSurface;
+    PhysicalDevice* m_pPhysicalDevice;
+    Device* m_pDevice;
+    SwapChain* m_pSwapChain;
+    RenderPass* m_pRenderPass;
+    DescriptorManager* m_pDescriptorManager;
+    GraphicsPipeline* m_pGraphicsPipeline;
+    CommandPool* m_pCommandPool;
+    SynchronizationObjects* m_pSyncObjects;
 
     // Resources
-    Texture* texture_;
-    Model* model_;
-    std::vector<Buffer*> uniformBuffers_;
-    std::vector<VkCommandBuffer> commandBuffers_;
-    std::vector<VkFramebuffer> swapChainFramebuffers_;
-    Image* depthImage_;
-    VkImageView depthImageView_;
-    VmaAllocator vmaAllocator_ = nullptr;
+    Texture* m_pTexture;
+    Model* m_pModel;
+    std::vector<Buffer*> m_pUniformBuffers;
+    std::vector<VkCommandBuffer> m_CommandBuffers;
+    std::vector<VkFramebuffer> m_SwapChainFramebuffers;
+    Image* m_pDepthImage;
+    VkImageView m_DepthImageView;
+    VmaAllocator m_VmaAllocator = nullptr;
 
-    uint32_t currentFrame_ = 0;
+    uint32_t m_currentFrame = 0;
 
     const int MAX_FRAMES_IN_FLIGHT = 2;
 

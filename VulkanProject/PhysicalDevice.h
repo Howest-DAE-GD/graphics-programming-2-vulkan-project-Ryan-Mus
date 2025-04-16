@@ -4,26 +4,24 @@
 #include <vector>
 #include <optional>
 
-class PhysicalDevice {
+class PhysicalDevice 
+{
 public:
     PhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
                    const std::vector<const char*>& requiredExtensions,
                    const VkPhysicalDeviceFeatures& requiredFeatures);
     ~PhysicalDevice() = default;
 
-    // Delete copy constructor and copy assignment operator
+ 
     PhysicalDevice(const PhysicalDevice&) = delete;
     PhysicalDevice& operator=(const PhysicalDevice&) = delete;
-
-    // Move constructor
     PhysicalDevice(PhysicalDevice&& other) noexcept;
-
-    // Move assignment operator
     PhysicalDevice& operator=(PhysicalDevice&& other) noexcept;
 
     VkPhysicalDevice get() const;
 
-    struct QueueFamilyIndices {
+    struct QueueFamilyIndices 
+    {
         std::optional<uint32_t> graphicsFamily;
         std::optional<uint32_t> presentFamily;
 
@@ -32,7 +30,8 @@ public:
 
     const QueueFamilyIndices& getQueueFamilyIndices() const;
 
-    struct SwapChainSupportDetails {
+    struct SwapChainSupportDetails 
+    {
         VkSurfaceCapabilitiesKHR        capabilities;
         std::vector<VkSurfaceFormatKHR> formats;
         std::vector<VkPresentModeKHR>   presentModes;
@@ -50,12 +49,12 @@ private:
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const;
     bool checkDeviceExtensionSupport(VkPhysicalDevice device) const;
 
-    VkInstance instance_;
-    VkSurfaceKHR surface_;
-    VkPhysicalDevice physicalDevice_{ VK_NULL_HANDLE };
-    QueueFamilyIndices queueFamilyIndices_;
-    SwapChainSupportDetails swapChainSupportDetails_;
+    VkInstance m_Instance;
+    VkSurfaceKHR m_Surface;
+    VkPhysicalDevice m_PhysicalDevice{ VK_NULL_HANDLE };
+    QueueFamilyIndices m_QueueFamilyIndices;
+    SwapChainSupportDetails m_SwapChainSupportDetails;
 
-    std::vector<const char*> requiredExtensions_;
-    VkPhysicalDeviceFeatures requiredFeatures_;
+    std::vector<const char*> m_RequiredExtensions;
+    VkPhysicalDeviceFeatures m_RequiredFeatures;
 };

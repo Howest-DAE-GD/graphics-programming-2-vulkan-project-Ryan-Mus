@@ -3,20 +3,18 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
-class SwapChain {
+class SwapChain 
+{
 public:
     SwapChain(VkDevice device, VkSurfaceKHR surface, VkSwapchainKHR swapChain,
               std::vector<VkImage> images, std::vector<VkImageView> imageViews,
               VkFormat imageFormat, VkExtent2D extent);
     ~SwapChain();
 
-    // Delete copy constructor and copy assignment operator
     SwapChain(const SwapChain&) = delete;
     SwapChain& operator=(const SwapChain&) = delete;
 
-    // Define move constructor
     SwapChain(SwapChain&& other) noexcept;
-    // Define move assignment operator
     SwapChain& operator=(SwapChain&& other) noexcept;
 
     VkSwapchainKHR get() const;
@@ -26,11 +24,11 @@ public:
     VkExtent2D getExtent() const;
 
 private:
-    VkDevice device_;
-    VkSurfaceKHR surface_;
-    VkSwapchainKHR swapChain_;
-    std::vector<VkImage> images_;
-    std::vector<VkImageView> imageViews_;
-    VkFormat imageFormat_;
-    VkExtent2D extent_;
+    VkDevice m_Device;
+    VkSurfaceKHR m_Surface;
+    VkSwapchainKHR m_SwapChain;
+    std::vector<VkImage> m_Images;
+    std::vector<VkImageView> m_ImageViews;
+    VkFormat m_ImageFormat;
+    VkExtent2D m_Extent;
 };

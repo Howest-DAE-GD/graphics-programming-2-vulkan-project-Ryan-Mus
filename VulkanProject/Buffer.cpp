@@ -1,13 +1,14 @@
 // Buffer.cpp
 #include "Buffer.h"
+#include <spdlog/spdlog.h>
 
 Buffer::Buffer(VmaAllocator allocator,
                VkDeviceSize size,
                VkBufferUsageFlags usage,
                VmaMemoryUsage memoryUsage,
                VmaAllocationCreateFlags allocFlags)
-    : allocator_(allocator), size_(size) {
-
+    : m_Allocator(allocator), m_BufferSize(size) 
+{
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
@@ -18,40 +19,50 @@ Buffer::Buffer(VmaAllocator allocator,
     allocInfo.usage = memoryUsage;
     allocInfo.flags = allocFlags;
 
-    if (vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo, &buffer_, &allocation_, nullptr) != VK_SUCCESS) {
+    if (vmaCreateBuffer(m_Allocator, &bufferInfo, &allocInfo, &m_Buffer, &m_Allocation, nullptr) != VK_SUCCESS) 
+    {
         throw std::runtime_error("Failed to create buffer!");
     }
+	spdlog::debug("Buffer created with size: {} bytes", size);
 }
 
-Buffer::~Buffer() {
-    if (mappedData_) {
+Buffer::~Buffer() 
+{
+    if (m_pMappedData) {
         unmap();
     }
-    vmaDestroyBuffer(allocator_, buffer_, allocation_);
+    vmaDestroyBuffer(m_Allocator, m_Buffer, m_Allocation);
+	spdlog::debug("Buffer destroyed.");
 }
 
-VkBuffer Buffer::get() const {
-    return buffer_;
+VkBuffer Buffer::get() const 
+{
+    return m_Buffer;
 }
 
-void* Buffer::map() {
-    if (!mappedData_) {
-        if (vmaMapMemory(allocator_, allocation_, &mappedData_) != VK_SUCCESS) {
+void* Buffer::map() 
+{
+    if (!m_pMappedData) 
+    {
+        if (vmaMapMemory(m_Allocator, m_Allocation, &m_pMappedData) != VK_SUCCESS) {
             throw std::runtime_error("Failed to map buffer memory!");
         }
     }
-    return mappedData_;
+    return m_pMappedData;
 }
 
-void Buffer::unmap() {
-    if (mappedData_) {
-        vmaUnmapMemory(allocator_, allocation_);
-        mappedData_ = nullptr;
+void Buffer::unmap() 
+{
+    if (m_pMappedData) 
+    {
+        vmaUnmapMemory(m_Allocator, m_Allocation);
+        m_pMappedData = nullptr;
     }
 }
 
-void Buffer::flush(VkDeviceSize size) {
-    vmaFlushAllocation(allocator_, allocation_, 0, size);
+void Buffer::flush(VkDeviceSize size) 
+{
+    vmaFlushAllocation(m_Allocator, m_Allocation, 0, size);
 }
 
 void Buffer::copyTo(CommandPool* commandPool,VkQueue queue, Buffer* dstBuffer)
@@ -60,7 +71,8 @@ void Buffer::copyTo(CommandPool* commandPool,VkQueue queue, Buffer* dstBuffer)
 	VkBufferCopy copyRegion{};
 	copyRegion.srcOffset = 0;
 	copyRegion.dstOffset = 0;
-	copyRegion.size = size_;
-	vkCmdCopyBuffer(commandBuffer, buffer_, dstBuffer->get(), 1, &copyRegion);
+	copyRegion.size = m_BufferSize;
+	vkCmdCopyBuffer(commandBuffer, m_Buffer, dstBuffer->get(), 1, &copyRegion);
 	commandPool->endSingleTimeCommands(commandBuffer, queue);
+	spdlog::debug("Buffer copied to destination buffer.");
 }

@@ -9,8 +9,10 @@
 #include <cstring>
 
 
-Instance::Instance() {
-    if (enableValidationLayers && !checkValidationLayerSupport()) {
+Instance::Instance() 
+{
+    if (m_EnableValidationLayers && !checkValidationLayerSupport())
+    {
         throw std::runtime_error("Validation layers requested, but not available!");
     }
 
@@ -28,7 +30,8 @@ Instance::Instance() {
 
     // Debug Messenger Create Info
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-    if (enableValidationLayers) {
+    if (m_EnableValidationLayers) 
+    {
         populateDebugMessengerCreateInfo(debugCreateInfo);
     }
 
@@ -37,13 +40,15 @@ Instance::Instance() {
     instanceBuilder.setApplicationInfo(appInfo)
         .enableExtensions(extensions);
 
-    if (enableValidationLayers) {
-        instanceBuilder.enableValidationLayers(validationLayers)
+    if (m_EnableValidationLayers)
+    {
+        instanceBuilder.enableValidationLayers(m_ValidationLayers)
             .setDebugMessengerCreateInfo(debugCreateInfo);
     }
 
     // Build the Vulkan instance
-    if (instanceBuilder.build(instance) != VK_SUCCESS) {
+    if (instanceBuilder.build(m_Instance) != VK_SUCCESS)
+    {
         throw std::runtime_error("Failed to create Vulkan instance!");
     }
 
@@ -52,34 +57,45 @@ Instance::Instance() {
 
     // Log used extensions
     spdlog::info("Used extensions:");
-    for (const auto& extension : extensions) {
-        spdlog::info("{}", extension);
+    for (const auto& extension : extensions) 
+    {
+        spdlog::info("\t{}", extension);
     }
+
+	spdlog::debug("Instance created.");
 }
 
-Instance::~Instance() {
-    if (enableValidationLayers) {
-        DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+Instance::~Instance() 
+{
+    if (m_EnableValidationLayers) 
+    {
+        DestroyDebugUtilsMessengerEXT(m_Instance, m_DebugMessenger, nullptr);
     }
-    vkDestroyInstance(instance, nullptr);
+    vkDestroyInstance(m_Instance, nullptr);
+	spdlog::debug("Destroying Instance.");
 }
 
-VkInstance Instance::getInstance() const {
-    return instance;
+VkInstance Instance::getInstance() const 
+{
+    return m_Instance;
 }
 
-void Instance::setupDebugMessenger() {
-    if (!enableValidationLayers) return;
+void Instance::setupDebugMessenger() 
+{
+    if (!m_EnableValidationLayers) return;
 
     VkDebugUtilsMessengerCreateInfoEXT createInfo{};
     populateDebugMessengerCreateInfo(createInfo);
 
-    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+    if (CreateDebugUtilsMessengerEXT(m_Instance, &createInfo, nullptr, &m_DebugMessenger) != VK_SUCCESS) 
+    {
         throw std::runtime_error("Failed to set up debug messenger!");
     }
+	spdlog::debug("Debug messenger created.");
 }
 
-void Instance::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
+void Instance::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) 
+{
     createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     createInfo.messageSeverity =
@@ -94,24 +110,29 @@ void Instance::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoE
     createInfo.pUserData = nullptr; // Optional
 }
 
-bool Instance::checkValidationLayerSupport() {
+bool Instance::checkValidationLayerSupport() 
+{
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
     std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-    for (const char* layerName : validationLayers) {
+    for (const char* layerName : m_ValidationLayers) 
+    {
         bool layerFound = false;
 
-        for (const auto& layerProperties : availableLayers) {
-            if (strcmp(layerName, layerProperties.layerName) == 0) {
+        for (const auto& layerProperties : availableLayers)
+        {
+            if (strcmp(layerName, layerProperties.layerName) == 0) 
+            {
                 layerFound = true;
                 break;
             }
         }
 
-        if (!layerFound) {
+        if (!layerFound) 
+        {
             return false;
         }
     }
@@ -119,14 +140,16 @@ bool Instance::checkValidationLayerSupport() {
     return true;
 }
 
-std::vector<const char*> Instance::getRequiredExtensions() {
+std::vector<const char*> Instance::getRequiredExtensions() 
+{
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-    if (enableValidationLayers) {
+    if (m_EnableValidationLayers) 
+    {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
@@ -138,8 +161,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT       messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT              messageType,
     const VkDebugUtilsMessengerCallbackDataEXT*  pCallbackData,
-    void*                                        pUserData) {
-
+    void*                                        pUserData) 
+{
     std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
 
     return VK_FALSE;
@@ -150,15 +173,17 @@ VkResult CreateDebugUtilsMessengerEXT(
     VkInstance                                  instance,
     const VkDebugUtilsMessengerCreateInfoEXT*   pCreateInfo,
     const VkAllocationCallbacks*                pAllocator,
-    VkDebugUtilsMessengerEXT*                   pDebugMessenger) {
-
+    VkDebugUtilsMessengerEXT*                   pDebugMessenger) 
+{
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT)
         vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 
-    if (func != nullptr) {
+    if (func != nullptr) 
+    {
         return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
     }
-    else {
+    else 
+    {
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 }
@@ -166,12 +191,13 @@ VkResult CreateDebugUtilsMessengerEXT(
 void DestroyDebugUtilsMessengerEXT(
     VkInstance                                  instance,
     VkDebugUtilsMessengerEXT                    debugMessenger,
-    const VkAllocationCallbacks*                pAllocator) {
-
+    const VkAllocationCallbacks*                pAllocator) 
+{
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)
         vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
 
-    if (func != nullptr) {
+    if (func != nullptr) 
+    {
         func(instance, debugMessenger, pAllocator);
     }
 }

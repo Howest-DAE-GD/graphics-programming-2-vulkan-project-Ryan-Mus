@@ -1,4 +1,3 @@
-// Buffer.h
 #pragma once
 
 #include <vulkan/vulkan.h>
@@ -6,7 +5,8 @@
 #include <stdexcept>
 #include "CommandPool.h"
 
-class Buffer {
+class Buffer 
+{
 public:
     Buffer(VmaAllocator allocator,
            VkDeviceSize size,
@@ -23,9 +23,9 @@ public:
 	void copyTo(CommandPool* commandPool,VkQueue queue, Buffer* dstBuffer);
 
 private:
-    VmaAllocator allocator_;
-    VkBuffer buffer_;
-    VmaAllocation allocation_;
-    void* mappedData_ = nullptr;
-    VkDeviceSize size_; 
+    VmaAllocator m_Allocator;
+    VkBuffer m_Buffer;
+    VmaAllocation m_Allocation;
+    void* m_pMappedData = nullptr;
+    VkDeviceSize m_BufferSize; 
 };

@@ -3,7 +3,8 @@
 #include <vector>
 #include <string>
 
-class Instance{
+class Instance
+{
 public:
     Instance();
     ~Instance();
@@ -16,17 +17,18 @@ private:
     bool checkValidationLayerSupport();
     std::vector<const char*> getRequiredExtensions();
 
-    VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
+    VkInstance m_Instance;
+    VkDebugUtilsMessengerEXT m_DebugMessenger;
 
-    const std::vector<const char*> validationLayers = {
+    const std::vector<const char*> m_ValidationLayers = 
+    {
         "VK_LAYER_KHRONOS_validation"
     };
 
 #ifdef NDEBUG
-    const bool enableValidationLayers = false;
+    const bool m_EnableValidationLayers = false;
 #else
-    const bool enableValidationLayers = true;
+    const bool m_EnableValidationLayers = true;
 #endif
 };
 

@@ -1,9 +1,9 @@
 // GraphicsPipeline.h
 #pragma once
 #include <vulkan/vulkan.h>
-#include <vulkan/vulkan.h>
 
-class GraphicsPipeline {
+class GraphicsPipeline 
+{
 public:
     GraphicsPipeline(VkDevice device, VkPipelineLayout pipelineLayout, VkPipeline graphicsPipeline);
     ~GraphicsPipeline();
@@ -12,7 +12,7 @@ public:
     VkPipeline get() const;
 
 private:
-    VkDevice device_;
-    VkPipelineLayout pipelineLayout_;
-    VkPipeline graphicsPipeline_;
+    VkDevice m_Device;
+    VkPipelineLayout m_PipelineLayout;
+    VkPipeline m_GraphicsPipeline;
 };

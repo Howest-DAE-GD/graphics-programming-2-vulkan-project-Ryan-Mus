@@ -4,7 +4,8 @@
 #include <stdexcept>
 
 class Device;
-class DeviceBuilder {
+class DeviceBuilder 
+{
 public:
     DeviceBuilder& setPhysicalDevice(VkPhysicalDevice physicalDevice);
     DeviceBuilder& setQueueFamilyIndices(const PhysicalDevice::QueueFamilyIndices& indices);
@@ -15,9 +16,9 @@ public:
     Device* build();
 
 private:
-    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
-    PhysicalDevice::QueueFamilyIndices queueFamilyIndices_;
-    std::vector<const char*> requiredExtensions_;
-    VkPhysicalDeviceFeatures enabledFeatures_{};
-    std::vector<const char*> validationLayers_;
+    VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
+    PhysicalDevice::QueueFamilyIndices m_QueueFamilyIndices;
+    std::vector<const char*> m_RequiredExtensions;
+    VkPhysicalDeviceFeatures m_EnabledFeatures_{};
+    std::vector<const char*> m_ValidationLayers;
 };

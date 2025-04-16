@@ -3,21 +3,27 @@
 
 #include <stdexcept>
 #include <array>
+#include <spdlog/spdlog.h>
 
 DescriptorManager::DescriptorManager(VkDevice device, size_t maxFramesInFlight)
-    : device_(device), maxFramesInFlight_(maxFramesInFlight) {
+    : m_Device(device), m_MaxFramesInFlight(maxFramesInFlight) 
+{
     createDescriptorSetLayout();
     createDescriptorPool();
+	spdlog::debug("DescriptorManager created.");
 }
 
-DescriptorManager::~DescriptorManager() {
-    vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
-    vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);
+DescriptorManager::~DescriptorManager() 
+{
+    vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(m_Device, m_DescriptorSetLayout, nullptr);
+	spdlog::debug("DescriptorManager Destroyed.");
 }
 
-void DescriptorManager::createDescriptorSetLayout() {
-	if (descriptorSetLayout_ != VK_NULL_HANDLE) {
-		vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);
+void DescriptorManager::createDescriptorSetLayout() 
+{
+	if (m_DescriptorSetLayout != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(m_Device, m_DescriptorSetLayout, nullptr);
 	}
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
@@ -40,27 +46,32 @@ void DescriptorManager::createDescriptorSetLayout() {
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
 
-    if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &descriptorSetLayout_) != VK_SUCCESS) {
+    if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_DescriptorSetLayout) != VK_SUCCESS) 
+    {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
+	spdlog::debug("Descriptor set layout created.");
 }
 
-void DescriptorManager::createDescriptorPool() {
+void DescriptorManager::createDescriptorPool() 
+{
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(maxFramesInFlight_);
+    poolSizes[0].descriptorCount = static_cast<uint32_t>(m_MaxFramesInFlight);
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(maxFramesInFlight_);
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(m_MaxFramesInFlight);
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(maxFramesInFlight_);
+    poolInfo.maxSets = static_cast<uint32_t>(m_MaxFramesInFlight);
 
-    if (vkCreateDescriptorPool(device_, &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescriptorPool) != VK_SUCCESS) 
+    {
         throw std::runtime_error("failed to create descriptor pool!");
     }
+	spdlog::debug("Descriptor pool created.");
 }
 
 void DescriptorManager::createDescriptorSets(
@@ -68,19 +79,21 @@ void DescriptorManager::createDescriptorSets(
     const std::vector<Texture*>& textures,
     size_t uniformBufferObjectSize) 
 {
-    std::vector<VkDescriptorSetLayout> layouts(maxFramesInFlight_, descriptorSetLayout_);
+    std::vector<VkDescriptorSetLayout> layouts(m_MaxFramesInFlight, m_DescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool_;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(maxFramesInFlight_);
+    allocInfo.descriptorPool = m_DescriptorPool;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(m_MaxFramesInFlight);
     allocInfo.pSetLayouts = layouts.data();
 
-    descriptorSets_.resize(maxFramesInFlight_);
-    if (vkAllocateDescriptorSets(device_, &allocInfo, descriptorSets_.data()) != VK_SUCCESS) {
+    m_DescriptorSets.resize(m_MaxFramesInFlight);
+    if (vkAllocateDescriptorSets(m_Device, &allocInfo, m_DescriptorSets.data()) != VK_SUCCESS) 
+    {
         throw std::runtime_error("failed to allocate descriptor sets!");
     }
 
-    for (size_t i = 0; i < maxFramesInFlight_; i++) {
+    for (size_t i = 0; i < m_MaxFramesInFlight; i++) 
+    {
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffers[i];
         bufferInfo.offset = 0;
@@ -94,7 +107,7 @@ void DescriptorManager::createDescriptorSets(
         std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
 
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = descriptorSets_[i];
+        descriptorWrites[0].dstSet = m_DescriptorSets[i];
         descriptorWrites[0].dstBinding = 0;
         descriptorWrites[0].dstArrayElement = 0;
         descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -102,7 +115,7 @@ void DescriptorManager::createDescriptorSets(
         descriptorWrites[0].pBufferInfo = &bufferInfo;
 
         descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = descriptorSets_[i];
+        descriptorWrites[1].dstSet = m_DescriptorSets[i];
         descriptorWrites[1].dstBinding = 1;
         descriptorWrites[1].dstArrayElement = 0;
         descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -110,19 +123,22 @@ void DescriptorManager::createDescriptorSets(
         descriptorWrites[1].pImageInfo = &imageInfo;
 
         vkUpdateDescriptorSets(
-            device_,
+            m_Device,
             static_cast<uint32_t>(descriptorWrites.size()),
             descriptorWrites.data(),
             0,
             nullptr
         );
+		spdlog::debug("Descriptor set updated for swapchain frame {}", i);
     }
 }
 
-VkDescriptorSetLayout DescriptorManager::getDescriptorSetLayout() const {
-    return descriptorSetLayout_;
+VkDescriptorSetLayout DescriptorManager::getDescriptorSetLayout() const 
+{
+    return m_DescriptorSetLayout;
 }
 
-const std::vector<VkDescriptorSet>& DescriptorManager::getDescriptorSets() const {
-    return descriptorSets_;
+const std::vector<VkDescriptorSet>& DescriptorManager::getDescriptorSets() const 
+{
+    return m_DescriptorSets;
 }

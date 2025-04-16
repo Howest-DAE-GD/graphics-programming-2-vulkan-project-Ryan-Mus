@@ -6,9 +6,10 @@
 
 class Device;
 class CommandPool;
-class Image {
+class Image 
+{
 public:
-    Image(Device* device, VmaAllocator allocator);
+    Image(Device* pDevice, VmaAllocator allocator);
     ~Image();
 
     void createImage(uint32_t width, uint32_t height,
@@ -26,8 +27,8 @@ public:
     VmaAllocation getAllocation() const;
 
 private:
-    Device* device_;
-    VmaAllocator allocator_;
-    VkImage image_;
-    VmaAllocation allocation_;
+    Device* m_pDevice;
+    VmaAllocator m_Allocator;
+    VkImage m_Image;
+    VmaAllocation m_Allocation;
 };

@@ -1,24 +1,31 @@
-// GraphicsPipeline.cpp
 #include "GraphicsPipeline.h"
+#include <spdlog/spdlog.h>
 
 GraphicsPipeline::GraphicsPipeline(VkDevice device, VkPipelineLayout pipelineLayout, VkPipeline graphicsPipeline)
-    : device_(device), pipelineLayout_(pipelineLayout), graphicsPipeline_(graphicsPipeline) {}
+    : m_Device(device), m_PipelineLayout(pipelineLayout), m_GraphicsPipeline(graphicsPipeline) 
+{
+	spdlog::debug("GraphicsPipeline created.");
+}
 
-GraphicsPipeline::~GraphicsPipeline() {
-    if (graphicsPipeline_ != VK_NULL_HANDLE) {
-        vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
+GraphicsPipeline::~GraphicsPipeline() 
+{
+    if (m_GraphicsPipeline != VK_NULL_HANDLE) 
+    {
+        vkDestroyPipeline(m_Device, m_GraphicsPipeline, nullptr);
     }
-    if (pipelineLayout_ != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
+    if (m_PipelineLayout != VK_NULL_HANDLE) 
+    {
+        vkDestroyPipelineLayout(m_Device, m_PipelineLayout, nullptr);
     }
+	spdlog::debug("GraphicsPipeline destroyed.");
 }
 
 VkPipelineLayout GraphicsPipeline::getPipelineLayout() const 
 {
-    return pipelineLayout_;
+    return m_PipelineLayout;
 }
 
 VkPipeline GraphicsPipeline::get() const 
 {
-    return graphicsPipeline_;
+    return m_GraphicsPipeline;
 }

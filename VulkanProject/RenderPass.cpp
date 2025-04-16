@@ -1,21 +1,30 @@
 #include "RenderPass.h"
 #include <array>
 #include <stdexcept>
+#include <spdlog/spdlog.h>
 
+//
+// Will probably change this to use a builder pattern later
+//
 RenderPass::RenderPass(VkDevice device, VkFormat swapChainImageFormat, VkFormat depthFormat)
-    : device_(device) {
+    : m_Device(device) 
+{
     createRenderPass(swapChainImageFormat, depthFormat);
+	spdlog::debug("RenderPass created.");
 }
 
 RenderPass::~RenderPass() {
-    vkDestroyRenderPass(device_, renderPass_, nullptr);
+    vkDestroyRenderPass(m_Device, m_RenderPass, nullptr);
+	spdlog::debug("RenderPass destroyed.");
 }
 
-VkRenderPass RenderPass::get() const {
-    return renderPass_;
+VkRenderPass RenderPass::get() const 
+{
+    return m_RenderPass;
 }
 
-void RenderPass::createRenderPass(VkFormat swapChainImageFormat, VkFormat depthFormat) {
+void RenderPass::createRenderPass(VkFormat swapChainImageFormat, VkFormat depthFormat) 
+{
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = swapChainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -72,7 +81,8 @@ void RenderPass::createRenderPass(VkFormat swapChainImageFormat, VkFormat depthF
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(device_, &renderPassInfo, nullptr, &renderPass_) != VK_SUCCESS) {
+    if (vkCreateRenderPass(m_Device, &renderPassInfo, nullptr, &m_RenderPass) != VK_SUCCESS) 
+    {
         throw std::runtime_error("failed to create render pass!");
     }
 }

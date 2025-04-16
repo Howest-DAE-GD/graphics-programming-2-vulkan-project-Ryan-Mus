@@ -5,7 +5,8 @@
 
 class PhysicalDevice;
 
-class PhysicalDeviceBuilder {
+class PhysicalDeviceBuilder 
+{
 public:
     PhysicalDeviceBuilder& setInstance(VkInstance instance);
     PhysicalDeviceBuilder& setSurface(VkSurfaceKHR surface);
@@ -14,8 +15,8 @@ public:
     PhysicalDevice* build();
 
 private:
-    VkInstance instance_{ VK_NULL_HANDLE };
-    VkSurfaceKHR surface_{ VK_NULL_HANDLE };
-    std::vector<const char*> requiredExtensions_;
-    VkPhysicalDeviceFeatures requiredFeatures_{};
+    VkInstance m_Instance{ VK_NULL_HANDLE };
+    VkSurfaceKHR m_Surface{ VK_NULL_HANDLE };
+    std::vector<const char*> m_RequiredExtensions;
+    VkPhysicalDeviceFeatures m_RequiredFeatures{};
 };

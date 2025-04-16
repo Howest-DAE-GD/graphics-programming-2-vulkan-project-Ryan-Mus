@@ -1,4 +1,3 @@
-// Model.h
 #pragma once
 
 #include <vulkan/vulkan.h>
@@ -14,7 +13,8 @@
 #include "CommandPool.h"
 #include "Device.h"
 
-struct Vertex {
+struct Vertex 
+{
     glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 texCoord;
@@ -25,9 +25,12 @@ struct Vertex {
     bool operator==(const Vertex& other) const;
 };
 
-namespace std {
-    template<> struct hash<Vertex> {
-        size_t operator()(const Vertex& vertex) const {
+namespace std 
+{
+    template<> struct hash<Vertex> 
+    {
+        size_t operator()(const Vertex& vertex) const 
+        {
             size_t seed = 0;
             hash<glm::vec3> vec3Hasher;
             hash<glm::vec2> vec2Hasher;
@@ -41,9 +44,10 @@ namespace std {
     };
 }
 
-class Model {
+class Model 
+{
 public:
-    Model(VmaAllocator allocator, Device* device, CommandPool* commandPool, const std::string& modelPath);
+    Model(VmaAllocator allocator, Device* pDevice, CommandPool* pCommandPool, const std::string& modelPath);
     ~Model();
 
     void loadModel();
@@ -55,14 +59,14 @@ public:
     size_t getIndexCount() const;
 
 private:
-    VmaAllocator allocator_;
-    Device* device_;
-    CommandPool* commandPool_;
-    std::string modelPath_;
+    VmaAllocator m_Allocator;
+    Device* m_pDevice;
+    CommandPool* m_pCommandPool;
+    std::string m_ModelPath;
 
-    std::vector<Vertex> vertices_;
-    std::vector<uint32_t> indices_;
+    std::vector<Vertex> m_Vertices;
+    std::vector<uint32_t> m_Indices;
 
-    Buffer* vertexBuffer_;
-    Buffer* indexBuffer_;
+    Buffer* m_pVertexBuffer;
+    Buffer* m_pIndexBuffer;
 };

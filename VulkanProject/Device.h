@@ -6,25 +6,22 @@
 
 class PhysicalDevice;
 
-class Device {
+class Device 
+{
 public:
     Device(VkDevice device, VkQueue graphicsQueue, VkQueue presentQueue);
     ~Device();
 
-    VkDevice get() const;
-    VkQueue getGraphicsQueue() const;
-    VkQueue getPresentQueue() const;
-
-    // Delete copy constructor and assignment
     Device(const Device&) = delete;
     Device& operator=(const Device&) = delete;
-
-    // Allow move semantics
     Device(Device&& other) noexcept;
     Device& operator=(Device&& other) noexcept;
 
+    VkDevice get() const;
+    VkQueue getGraphicsQueue() const;
+    VkQueue getPresentQueue() const;
 private:
-    VkDevice device_;
-    VkQueue graphicsQueue_;
-    VkQueue presentQueue_;
+    VkDevice m_Device;
+    VkQueue m_GraphicsQueue;
+    VkQueue m_PresentQueue;
 };

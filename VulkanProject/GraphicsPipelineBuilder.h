@@ -1,4 +1,3 @@
-// GraphicsPipelineBuilder.h
 #pragma once
 
 #include <vulkan/vulkan.h>
@@ -7,7 +6,8 @@
 
 #include "GraphicsPipeline.h"
 
-class GraphicsPipelineBuilder {
+class GraphicsPipelineBuilder 
+{
 public:
     GraphicsPipelineBuilder& setDevice(VkDevice device);
     GraphicsPipelineBuilder& setRenderPass(VkRenderPass renderPass);
@@ -19,12 +19,12 @@ public:
     GraphicsPipeline* build();
 
 private:
-    VkDevice device_{ VK_NULL_HANDLE };
-    VkRenderPass renderPass_{ VK_NULL_HANDLE };
-    VkDescriptorSetLayout descriptorSetLayout_{ VK_NULL_HANDLE };
-    VkExtent2D swapChainExtent_{};
-    VkVertexInputBindingDescription bindingDescription_{};
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions_{};
-    std::string vertShaderPath_;
-    std::string fragShaderPath_;
+    VkDevice m_Device{ VK_NULL_HANDLE };
+    VkRenderPass m_RenderPass{ VK_NULL_HANDLE };
+    VkDescriptorSetLayout m_DescriptorSetLayout{ VK_NULL_HANDLE };
+    VkExtent2D m_SwapChainExtent{};
+    VkVertexInputBindingDescription m_BindingDescription{};
+    std::vector<VkVertexInputAttributeDescription> m_AttributeDescriptions{};
+    std::string m_VertShaderPath;
+    std::string m_FragShaderPath;
 };

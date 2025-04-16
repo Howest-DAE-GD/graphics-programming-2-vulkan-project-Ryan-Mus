@@ -3,7 +3,8 @@
 #include "Surface.h"
 
 class SwapChain;
-class SwapChainBuilder {
+class SwapChainBuilder 
+{
 public:
     SwapChainBuilder& setDevice(VkDevice device);
     SwapChainBuilder& setPhysicalDevice(VkPhysicalDevice physicalDevice);
@@ -16,7 +17,8 @@ public:
     SwapChain* build();
 
 private:
-    struct SwapChainSupportDetails {
+    struct SwapChainSupportDetails 
+    {
         VkSurfaceCapabilitiesKHR        capabilities{};
         std::vector<VkSurfaceFormatKHR> formats;
         std::vector<VkPresentModeKHR>   presentModes;
@@ -28,11 +30,11 @@ private:
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 
-    VkDevice device_{ VK_NULL_HANDLE };
-    VkPhysicalDevice physicalDevice_{ VK_NULL_HANDLE };
-    VkSurfaceKHR surface_{ VK_NULL_HANDLE };
-    uint32_t width_{ 0 };
-    uint32_t height_{ 0 };
-    uint32_t graphicsFamilyIndex_{ 0 };
-    uint32_t presentFamilyIndex_{ 0 };
+    VkDevice m_Device{ VK_NULL_HANDLE };
+    VkPhysicalDevice m_PhysicalDevice{ VK_NULL_HANDLE };
+    VkSurfaceKHR m_Surface{ VK_NULL_HANDLE };
+    uint32_t m_Width{ 0 };
+    uint32_t m_Height{ 0 };
+    uint32_t m_GraphicsFamilyIndex{ 0 };
+    uint32_t m_PresentFamilyIndex{ 0 };
 };

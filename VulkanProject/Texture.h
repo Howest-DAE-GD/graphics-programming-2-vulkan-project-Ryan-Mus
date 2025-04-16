@@ -6,30 +6,34 @@
 #include "Image.h"
 #include <string>
 
+//
+// Texture sampler will probably not be static later.
+//
 class Device;
-class Texture {
+class Texture 
+{
 public:
-    Texture(Device* device, VmaAllocator allocator, CommandPool* commandPool,
+    Texture(Device* pDevice, VmaAllocator allocator, CommandPool* pCommandPool,
             const std::string& texturePath, VkPhysicalDevice physicalDevice);
     ~Texture();
 
     void createTextureImage();
     void createTextureImageView();
+    VkImageView getTextureImageView() const;
+
     static void createTextureSampler(VkDevice device, VkPhysicalDevice physicalDevice);
     static VkSampler getTextureSampler();
 
-    VkImageView getTextureImageView() const;
-
 private:
-    Device* device_;
-    VmaAllocator allocator_;
-    CommandPool* commandPool_;
-    std::string texturePath_;
-    VkPhysicalDevice physicalDevice_;
+    Device* m_pDevice;
+    VmaAllocator m_Allocator;
+    CommandPool* m_pCommandPool;
+    std::string m_TexturePath;
+    VkPhysicalDevice m_PhysicalDevice;
 
-    Image* textureImage_;
-    VkImageView textureImageView_;
+    Image* m_pTextureImage;
+    VkImageView m_TextureImageView;
 
-    static VkSampler textureSampler_;
-    static size_t samplerUsers_; // Reference count for the sampler
+    static VkSampler s_textureSampler;
+    static size_t s_samplerUsers; // Reference count for the sampler
 };
