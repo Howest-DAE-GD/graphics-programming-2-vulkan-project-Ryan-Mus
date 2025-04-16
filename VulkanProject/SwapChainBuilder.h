@@ -13,7 +13,7 @@ public:
     SwapChainBuilder& setGraphicsFamilyIndex(uint32_t index);
     SwapChainBuilder& setPresentFamilyIndex(uint32_t index);
 
-    SwapChain build();
+    SwapChain* build();
 
 private:
     struct SwapChainSupportDetails {

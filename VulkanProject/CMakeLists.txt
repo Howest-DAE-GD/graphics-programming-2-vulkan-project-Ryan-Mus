@@ -81,7 +81,7 @@ add_executable(VulkanProject
  "RenderPass.h" "RenderPass.cpp"
  "GraphicsPipeline.h" "GraphicsPipeline.cpp"
  "GraphicsPipelineBuilder.h" "GraphicsPipelineBuilder.cpp"
- "SynchronizationObjects.h" "CommandPool.h" "CommandPool.cpp" "Buffer.h" "Buffer.cpp" "DescriptorManager.h" "DescriptorManager.cpp" "Image.h" "Image.cpp" "Model.h" "Model.cpp")
+ "SynchronizationObjects.h" "CommandPool.h" "CommandPool.cpp" "Buffer.h" "Buffer.cpp" "DescriptorManager.h" "DescriptorManager.cpp" "Image.h" "Image.cpp" "Model.h" "Model.cpp" "Texture.h" "Texture.cpp" "Renderer.h" "Renderer.cpp")
 
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 

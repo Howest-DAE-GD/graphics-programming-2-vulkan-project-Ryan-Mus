@@ -39,7 +39,7 @@ SwapChainBuilder& SwapChainBuilder::setPresentFamilyIndex(uint32_t index) {
     return *this;
 }
 
-SwapChain SwapChainBuilder::build() {
+SwapChain* SwapChainBuilder::build() {
     if (device_ == VK_NULL_HANDLE || physicalDevice_ == VK_NULL_HANDLE || surface_ == VK_NULL_HANDLE) {
         throw std::runtime_error("SwapChainBuilder: Missing required parameters.");
     }
@@ -133,7 +133,7 @@ SwapChain SwapChainBuilder::build() {
 
     }
 
-    return SwapChain(device_, surface_, swapChain, images, imageViews,
+    return new SwapChain(device_, surface_, swapChain, images, imageViews,
         surfaceFormat.format, extent);
 }
 

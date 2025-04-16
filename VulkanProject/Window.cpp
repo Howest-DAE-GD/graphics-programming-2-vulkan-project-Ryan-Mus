@@ -2,6 +2,7 @@
 #include <stdexcept>
 
 Window::Window(int width, int height, const char* title)
+	: m_Width(width), m_Height(height)
 {
     if (!glfwInit())
     {

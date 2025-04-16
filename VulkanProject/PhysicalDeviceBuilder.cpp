@@ -22,12 +22,12 @@ PhysicalDeviceBuilder& PhysicalDeviceBuilder::setRequiredDeviceFeatures(const Vk
     return *this;
 }
 
-PhysicalDevice PhysicalDeviceBuilder::build() {
+PhysicalDevice* PhysicalDeviceBuilder::build() {
     if (instance_ == VK_NULL_HANDLE) {
         throw std::runtime_error("VkInstance not set in PhysicalDeviceBuilder");
     }
     if (surface_ == VK_NULL_HANDLE) {
         throw std::runtime_error("VkSurfaceKHR not set in PhysicalDeviceBuilder");
     }
-    return PhysicalDevice(instance_, surface_, requiredExtensions_, requiredFeatures_);
+    return new PhysicalDevice(instance_, surface_, requiredExtensions_, requiredFeatures_);
 }

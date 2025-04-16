@@ -15,9 +15,14 @@ public:
     bool isFramebufferResized() const { return framebufferResized; }
     void resetFramebufferResized() { framebufferResized = false; }
 
+	int getWidth() const { return m_Width; }
+	int getHeight() const { return m_Height; }
+
 private:
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 
     GLFWwindow* m_Window;
     bool framebufferResized = false;
+	int m_Width;
+	int m_Height;
 };

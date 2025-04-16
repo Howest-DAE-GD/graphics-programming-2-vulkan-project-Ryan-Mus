@@ -11,7 +11,7 @@ public:
     PhysicalDeviceBuilder& setSurface(VkSurfaceKHR surface);
     PhysicalDeviceBuilder& addRequiredExtension(const char* extension);
     PhysicalDeviceBuilder& setRequiredDeviceFeatures(const VkPhysicalDeviceFeatures& features);
-    PhysicalDevice build();
+    PhysicalDevice* build();
 
 private:
     VkInstance instance_{ VK_NULL_HANDLE };

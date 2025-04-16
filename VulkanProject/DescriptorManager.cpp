@@ -1,4 +1,5 @@
 #include "DescriptorManager.h"
+#include "Texture.h"
 
 #include <stdexcept>
 #include <array>
@@ -64,9 +65,9 @@ void DescriptorManager::createDescriptorPool() {
 
 void DescriptorManager::createDescriptorSets(
     const std::vector<VkBuffer>& uniformBuffers,
-    VkImageView textureImageView,
-    VkSampler textureSampler, size_t range) {
-
+    const std::vector<Texture*>& textures,
+    size_t uniformBufferObjectSize) 
+{
     std::vector<VkDescriptorSetLayout> layouts(maxFramesInFlight_, descriptorSetLayout_);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -83,12 +84,12 @@ void DescriptorManager::createDescriptorSets(
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffers[i];
         bufferInfo.offset = 0;
-        bufferInfo.range = range;
+        bufferInfo.range = uniformBufferObjectSize;
 
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.imageView = textureImageView;
-        imageInfo.sampler = textureSampler;
+        imageInfo.imageView = textures[i]->getTextureImageView(); // Use texture image view
+        imageInfo.sampler = Texture::getTextureSampler(); // Use the static sampler
 
         std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
 
@@ -108,7 +109,13 @@ void DescriptorManager::createDescriptorSets(
         descriptorWrites[1].descriptorCount = 1;
         descriptorWrites[1].pImageInfo = &imageInfo;
 
-        vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+        vkUpdateDescriptorSets(
+            device_,
+            static_cast<uint32_t>(descriptorWrites.size()),
+            descriptorWrites.data(),
+            0,
+            nullptr
+        );
     }
 }
 

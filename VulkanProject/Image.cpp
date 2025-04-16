@@ -1,9 +1,11 @@
 // Image.cpp
 
 #include "Image.h"
+#include "CommandPool.h"
+#include "Device.h"
 #include <stdexcept>
 
-Image::Image(VkDevice device, VmaAllocator allocator)
+Image::Image(Device* device, VmaAllocator allocator)
     : device_(device), allocator_(allocator), image_(VK_NULL_HANDLE), allocation_(VK_NULL_HANDLE) {}
 
 Image::~Image() {
@@ -47,7 +49,7 @@ VkImageView Image::createImageView(VkFormat format, VkImageAspectFlags aspectFla
     viewInfo.subresourceRange.layerCount = 1;
 
     VkImageView imageView;
-    if (vkCreateImageView(device_, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+    if (vkCreateImageView(device_->get(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture image view!");
     }
 
@@ -64,7 +66,7 @@ void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQue
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device_, &allocInfo, &commandBuffer);
+    vkAllocateCommandBuffers(device_->get(), &allocInfo, &commandBuffer);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -131,7 +133,31 @@ void Image::transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQue
     vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(graphicsQueue);
 
-    vkFreeCommandBuffers(device_, commandPool, 1, &commandBuffer);
+    vkFreeCommandBuffers(device_->get(), commandPool, 1, &commandBuffer);
+}
+
+void Image::copyBufferToImage(CommandPool* commandPool, VkBuffer buffer, uint32_t width, uint32_t height)
+{
+    VkCommandBuffer commandBuffer = commandPool->beginSingleTimeCommands();
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = { 0, 0, 0 };
+    region.imageExtent = {
+        width,
+        height,
+        1
+    };
+
+    vkCmdCopyBufferToImage(commandBuffer, buffer, image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    commandPool->endSingleTimeCommands(commandBuffer, device_->getGraphicsQueue());
 }
 
 VkImage Image::getImage() const {

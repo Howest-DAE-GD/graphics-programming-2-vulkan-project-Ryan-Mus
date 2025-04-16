@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
+class Texture;
 class DescriptorManager {
 public:
     DescriptorManager(VkDevice device, size_t maxFramesInFlight);
@@ -12,9 +13,9 @@ public:
     void createDescriptorPool();
     void createDescriptorSets(
         const std::vector<VkBuffer>& uniformBuffers,
-        VkImageView textureImageView,
-        VkSampler textureSampler,
-        size_t range);
+        const std::vector<Texture*>& textures,
+        size_t uniformBufferObjectSize
+    );
 
     VkDescriptorSetLayout getDescriptorSetLayout() const;
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
