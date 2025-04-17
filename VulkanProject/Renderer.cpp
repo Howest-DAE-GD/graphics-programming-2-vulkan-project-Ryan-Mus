@@ -52,11 +52,17 @@ void Renderer::initVulkan()
     VkPhysicalDeviceFeatures deviceFeatures{};
     deviceFeatures.samplerAnisotropy = VK_TRUE;
 
+    VkPhysicalDeviceVulkan12Features vulkan12Features{};
+    vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    vulkan12Features.runtimeDescriptorArray = VK_TRUE;
+
     m_pPhysicalDevice = PhysicalDeviceBuilder()
         .setInstance(m_pInstance->getInstance())
         .setSurface(m_pSurface->get())
         .addRequiredExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
+        .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .setRequiredDeviceFeatures(deviceFeatures)
+        .setVulkan12Features(vulkan12Features)
         .build();
 
     std::vector<const char*> validationLayers;
@@ -76,7 +82,9 @@ void Renderer::initVulkan()
         .setPhysicalDevice(m_pPhysicalDevice->get())
         .setQueueFamilyIndices(m_pPhysicalDevice->getQueueFamilyIndices())
         .addRequiredExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
+        .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .setEnabledFeatures(m_pPhysicalDevice->getFeatures())
+		.setVulkan12Features(m_pPhysicalDevice->getVulkan12Features())
         .enableValidationLayers(validationLayers)
         .build();
 
@@ -92,8 +100,40 @@ void Renderer::initVulkan()
 
     m_pRenderPass = new RenderPass(m_pDevice->get(), m_pSwapChain->getImageFormat(), findDepthFormat());
 
-    m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
+    m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT,0);
     m_pDescriptorManager->createDescriptorSetLayout();
+
+    m_pCommandPool = new CommandPool(m_pDevice->get(), m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value());
+
+    createVmaAllocator();
+    createDepthResources();
+    createFramebuffers();
+
+    m_pModel = new Model(m_VmaAllocator, m_pDevice,m_pPhysicalDevice, m_pCommandPool, MODEL_PATH_);
+    m_pModel->loadModel();
+    m_pModel->createVertexBuffer();
+    m_pModel->createIndexBuffer();
+
+    createUniformBuffers();
+
+    // Gather uniform buffer handles
+    std::vector<VkBuffer> uniformBufferHandles;
+    for (const auto& buffer : m_pUniformBuffers) {
+        uniformBufferHandles.push_back(buffer->get());
+    }
+
+    // Get textures from the Model
+    std::vector<Texture*> textures = m_pModel->getTextures();
+
+	m_pDescriptorManager->SetTextureCount(textures.size());
+    // Collect image infos for the textures
+    std::vector<VkDescriptorImageInfo> imageInfos;
+ 
+    // Create descriptor sets
+    m_pDescriptorManager->createDescriptorSets(
+        uniformBufferHandles, textures, sizeof(UniformBufferObject));
+
+    createCommandBuffers();
 
     m_pGraphicsPipeline = GraphicsPipelineBuilder()
         .setDevice(m_pDevice->get())
@@ -104,36 +144,6 @@ void Renderer::initVulkan()
         .setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
         .setShaderPaths("shaders/vert.spv", "shaders/frag.spv")
         .build();
-
-    m_pCommandPool = new CommandPool(m_pDevice->get(), m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value());
-
-    createVmaAllocator();
-    createDepthResources();
-    createFramebuffers();
-
-    m_pTexture = new Texture(m_pDevice, m_VmaAllocator, m_pCommandPool, TEXTURE_PATH_, m_pPhysicalDevice->get());
-
-    std::vector<Texture*> textures(MAX_FRAMES_IN_FLIGHT, m_pTexture);
-
-    m_pModel = new Model(m_VmaAllocator, m_pDevice, m_pCommandPool, MODEL_PATH_);
-    m_pModel->loadModel();
-    m_pModel->createVertexBuffer();
-    m_pModel->createIndexBuffer();
-
-    createUniformBuffers();
-
-    // Gather uniform buffer handles
-    std::vector<VkBuffer> uniformBufferHandles;
-    for (const auto& buffer : m_pUniformBuffers) 
-    {
-        uniformBufferHandles.push_back(buffer->get());
-    }
-
-    // Create descriptor sets
-    m_pDescriptorManager->createDescriptorSets(
-        uniformBufferHandles, textures, sizeof(UniformBufferObject));
-
-    createCommandBuffers();
 
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
 }
@@ -390,28 +400,35 @@ void Renderer::drawFrame()
 
 void Renderer::updateUniformBuffer(uint32_t currentImage)
 {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
+    // Calculate delta time
+    static auto lastTime = std::chrono::high_resolution_clock::now();
     auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
+    lastTime = currentTime;
+
+    // Create or update the camera
+    static Camera camera(m_pWindow->getGLFWwindow(),
+        glm::vec3(0.0f, 0.0f, 3.0f), // Camera position
+        glm::vec3(0.0f, 1.0f, 0.0f), // World up vector (Z-up)
+        0.0f, 0.0f);               // Initial yaw and pitch
+
+
+    camera.update(deltaTime);
 
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f),
-                            glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(
-        glm::vec3(2.0f, 2.0f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.model = glm::mat4(1.0f);
+    ubo.view = camera.getViewMatrix();
     ubo.proj = glm::perspective(
         glm::radians(45.0f),
         m_pSwapChain->getExtent().width / (float)m_pSwapChain->getExtent().height,
         0.1f,
-        10.0f);
+        10000.0f);
     ubo.proj[1][1] *= -1;
 
     void* data = m_pUniformBuffers[currentImage]->map();
     memcpy(data, &ubo, sizeof(ubo));
 }
+
 
 void Renderer::recreateSwapChain() 
 {
@@ -462,7 +479,7 @@ void Renderer::cleanup()
 
     delete m_pDescriptorManager;
     delete m_pModel;
-    delete m_pTexture;
+    //delete m_pTexture;
     vmaDestroyAllocator(m_VmaAllocator);
 
     delete m_pGraphicsPipeline;

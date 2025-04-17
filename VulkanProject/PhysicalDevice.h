@@ -4,15 +4,15 @@
 #include <vector>
 #include <optional>
 
-class PhysicalDevice 
+class PhysicalDevice
 {
 public:
     PhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
-                   const std::vector<const char*>& requiredExtensions,
-                   const VkPhysicalDeviceFeatures& requiredFeatures);
+        const std::vector<const char*>& requiredExtensions,
+        const VkPhysicalDeviceFeatures& requiredFeatures,
+        const VkPhysicalDeviceVulkan12Features& vulkan12Features);
     ~PhysicalDevice() = default;
 
- 
     PhysicalDevice(const PhysicalDevice&) = delete;
     PhysicalDevice& operator=(const PhysicalDevice&) = delete;
     PhysicalDevice(PhysicalDevice&& other) noexcept;
@@ -20,7 +20,7 @@ public:
 
     VkPhysicalDevice get() const;
 
-    struct QueueFamilyIndices 
+    struct QueueFamilyIndices
     {
         std::optional<uint32_t> graphicsFamily;
         std::optional<uint32_t> presentFamily;
@@ -30,7 +30,7 @@ public:
 
     const QueueFamilyIndices& getQueueFamilyIndices() const;
 
-    struct SwapChainSupportDetails 
+    struct SwapChainSupportDetails
     {
         VkSurfaceCapabilitiesKHR        capabilities;
         std::vector<VkSurfaceFormatKHR> formats;
@@ -40,8 +40,8 @@ public:
     SwapChainSupportDetails querySwapChainSupport() const;
 
     const VkPhysicalDeviceFeatures& getFeatures() const;
+    const VkPhysicalDeviceVulkan12Features& getVulkan12Features() const;
     const std::vector<const char*>& getExtensions() const;
-
 
 private:
     void pickPhysicalDevice();
@@ -57,4 +57,6 @@ private:
 
     std::vector<const char*> m_RequiredExtensions;
     VkPhysicalDeviceFeatures m_RequiredFeatures;
+    VkPhysicalDeviceVulkan12Features m_Vulkan12Features;
+    bool m_UseVulkan12Features{ false };
 };

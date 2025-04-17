@@ -3,29 +3,34 @@
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 
-PhysicalDeviceBuilder& PhysicalDeviceBuilder::setInstance(VkInstance instance) 
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::setInstance(VkInstance instance)
 {
     m_Instance = instance;
     return *this;
 }
 
-PhysicalDeviceBuilder& PhysicalDeviceBuilder::setSurface(VkSurfaceKHR surface) 
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::setSurface(VkSurfaceKHR surface)
 {
     m_Surface = surface;
     return *this;
 }
 
-PhysicalDeviceBuilder& PhysicalDeviceBuilder::addRequiredExtension(const char* extension) 
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::addRequiredExtension(const char* extension)
 {
     m_RequiredExtensions.push_back(extension);
-	spdlog::debug("Added required extension: {}", extension);
     return *this;
 }
 
-PhysicalDeviceBuilder& PhysicalDeviceBuilder::setRequiredDeviceFeatures(const VkPhysicalDeviceFeatures& features) 
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::setRequiredDeviceFeatures(const VkPhysicalDeviceFeatures& features)
 {
     m_RequiredFeatures = features;
-	spdlog::debug("Set required device features.");
+    return *this;
+}
+
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::setVulkan12Features(const VkPhysicalDeviceVulkan12Features& features)
+{
+    m_Vulkan12Features = features;
+    m_UseVulkan12Features = true;
     return *this;
 }
 
@@ -40,5 +45,5 @@ PhysicalDevice* PhysicalDeviceBuilder::build()
         throw std::runtime_error("VkSurfaceKHR not set in PhysicalDeviceBuilder");
     }
 	spdlog::debug("Building PhysicalDevice.");
-    return new PhysicalDevice(m_Instance, m_Surface, m_RequiredExtensions, m_RequiredFeatures);
+    return new PhysicalDevice(m_Instance, m_Surface, m_RequiredExtensions, m_RequiredFeatures, m_Vulkan12Features);
 }

@@ -12,12 +12,15 @@
 #include "Buffer.h"
 #include "CommandPool.h"
 #include "Device.h"
+#include "Texture.h"
 
 struct Vertex 
 {
     glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 texCoord;
+    uint32_t texIndex;
+
 
     static VkVertexInputBindingDescription getBindingDescription();
     static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
@@ -44,10 +47,11 @@ namespace std
     };
 }
 
+class PhysicalDevice;
 class Model 
 {
 public:
-    Model(VmaAllocator allocator, Device* pDevice, CommandPool* pCommandPool, const std::string& modelPath);
+    Model(VmaAllocator allocator, Device* pDevice, PhysicalDevice* pPhysicalDevice, CommandPool* pCommandPool, const std::string& modelPath);
     ~Model();
 
     void loadModel();
@@ -58,9 +62,12 @@ public:
     VkBuffer getIndexBuffer() const;
     size_t getIndexCount() const;
 
+	std::vector<Texture*> getTextures() const { return m_Textures; }
+
 private:
     VmaAllocator m_Allocator;
     Device* m_pDevice;
+	PhysicalDevice* m_pPhysicalDevice;
     CommandPool* m_pCommandPool;
     std::string m_ModelPath;
 
@@ -69,4 +76,6 @@ private:
 
     Buffer* m_pVertexBuffer;
     Buffer* m_pIndexBuffer;
+
+    std::vector<Texture*> m_Textures;
 };

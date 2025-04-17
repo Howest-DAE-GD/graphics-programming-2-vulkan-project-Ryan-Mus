@@ -19,6 +19,7 @@
 #include "Texture.h"
 #include "Buffer.h"
 #include "Image.h"
+#include "Camera.h"
 #include "vk_mem_alloc.h"
 
 #include <vector>
@@ -67,7 +68,7 @@ private:
     SynchronizationObjects* m_pSyncObjects;
 
     // Resources
-    Texture* m_pTexture;
+    //Texture* m_pTexture;
     Model* m_pModel;
     std::vector<Buffer*> m_pUniformBuffers;
     std::vector<VkCommandBuffer> m_CommandBuffers;
@@ -81,6 +82,5 @@ private:
     const int MAX_FRAMES_IN_FLIGHT = 2;
 
     // Paths
-    const std::string MODEL_PATH_ = "models/viking_room.obj";
-    const std::string TEXTURE_PATH_ = "textures/viking_room.png";
+    const std::string MODEL_PATH_ = "models/sponza.obj";
 };

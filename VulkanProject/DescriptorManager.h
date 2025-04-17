@@ -4,10 +4,10 @@
 #include <vector>
 
 class Texture;
-class DescriptorManager 
+class DescriptorManager
 {
 public:
-    DescriptorManager(VkDevice device, size_t maxFramesInFlight);
+    DescriptorManager(VkDevice device, size_t maxFramesInFlight, size_t textureCount);
     ~DescriptorManager();
 
     void createDescriptorSetLayout();
@@ -18,12 +18,15 @@ public:
         size_t uniformBufferObjectSize
     );
 
+	void SetTextureCount(size_t textureCount);
+
     VkDescriptorSetLayout getDescriptorSetLayout() const;
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
 
 private:
     VkDevice m_Device;
     size_t m_MaxFramesInFlight;
+    size_t m_TextureCount; // New member variable to store texture count
 
     VkDescriptorSetLayout m_DescriptorSetLayout{};
     VkDescriptorPool m_DescriptorPool{};

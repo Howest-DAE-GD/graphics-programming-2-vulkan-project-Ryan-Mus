@@ -81,7 +81,14 @@ add_executable(VulkanProject
  "RenderPass.h" "RenderPass.cpp"
  "GraphicsPipeline.h" "GraphicsPipeline.cpp"
  "GraphicsPipelineBuilder.h" "GraphicsPipelineBuilder.cpp"
- "SynchronizationObjects.h" "CommandPool.h" "CommandPool.cpp" "Buffer.h" "Buffer.cpp" "DescriptorManager.h" "DescriptorManager.cpp" "Image.h" "Image.cpp" "Model.h" "Model.cpp" "Texture.h" "Texture.cpp" "Renderer.h" "Renderer.cpp")
+ "SynchronizationObjects.h" 
+ "CommandPool.h" "CommandPool.cpp"
+ "Buffer.h" "Buffer.cpp"
+ "DescriptorManager.h" "DescriptorManager.cpp"
+ "Image.h" "Image.cpp"
+ "Model.h" "Model.cpp"
+ "Texture.h" "Texture.cpp"
+ "Renderer.h" "Renderer.cpp" "Camera.h" "Camera.cpp")
 
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 
@@ -153,13 +160,17 @@ set(MODEL_DIR "${CMAKE_SOURCE_DIR}/models")
 set(MODEL_OUT_DIR "${CMAKE_BINARY_DIR}/models")
 file(MAKE_DIRECTORY ${MODEL_OUT_DIR})
 
-file(GLOB MODEL_FILES "${MODEL_DIR}/*")
+file(GLOB_RECURSE MODEL_FILES "${MODEL_DIR}/*")
 
 foreach(MODEL ${MODEL_FILES})
+    file(RELATIVE_PATH REL_PATH "${MODEL_DIR}" "${MODEL}")
+    set(DEST_PATH "${MODEL_OUT_DIR}/${REL_PATH}")
+    get_filename_component(DEST_DIR "${DEST_PATH}" DIRECTORY)
+    file(MAKE_DIRECTORY "${DEST_DIR}")
     add_custom_command(
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${MODEL} ${MODEL_OUT_DIR}/
+            "${MODEL}" "${DEST_PATH}"
         COMMENT "Copying model ${MODEL} to build-directory..."
     )
 endforeach()

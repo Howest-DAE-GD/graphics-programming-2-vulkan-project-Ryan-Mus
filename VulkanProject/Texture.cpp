@@ -14,6 +14,7 @@ Texture::Texture(Device* pDevice, VmaAllocator allocator, CommandPool* pCommandP
       m_TexturePath(texturePath), m_PhysicalDevice(physicalDevice),
       m_pTextureImage(nullptr), m_TextureImageView(VK_NULL_HANDLE) 
 {
+    spdlog::info("Creating Texture: {}", m_TexturePath);
     createTextureImage();
     createTextureImageView();
 

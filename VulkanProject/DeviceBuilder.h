@@ -11,6 +11,7 @@ public:
     DeviceBuilder& setQueueFamilyIndices(const PhysicalDevice::QueueFamilyIndices& indices);
     DeviceBuilder& addRequiredExtension(const char* extension);
     DeviceBuilder& setEnabledFeatures(const VkPhysicalDeviceFeatures& features);
+	DeviceBuilder& setVulkan12Features(const VkPhysicalDeviceVulkan12Features& features);
     DeviceBuilder& enableValidationLayers(const std::vector<const char*>& validationLayers);
 
     Device* build();
@@ -19,6 +20,7 @@ private:
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
     PhysicalDevice::QueueFamilyIndices m_QueueFamilyIndices;
     std::vector<const char*> m_RequiredExtensions;
-    VkPhysicalDeviceFeatures m_EnabledFeatures_{};
+    VkPhysicalDeviceFeatures m_EnabledFeatures{};
+	VkPhysicalDeviceVulkan12Features m_Vulkan12Features{};
     std::vector<const char*> m_ValidationLayers;
 };
