@@ -60,6 +60,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+# ResourcesVulkan
+FetchContent_Declare(
+    resourcesvulkan
+    GIT_REPOSITORY https://github.com/Ryan-Mus/ResourcesVulkan.git
+    GIT_TAG        master
+    SOURCE_DIR     ${CMAKE_SOURCE_DIR}/models
+)
+FetchContent_MakeAvailable(resourcesvulkan)
+
 set(GLM_INCLUDE_DIR ${glm_SOURCE_DIR})
 set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include)
 set(STB_INCLUDE_DIR ${stb_SOURCE_DIR})
@@ -109,7 +118,7 @@ set_target_properties(VulkanProject PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
-# Compileer shaders bij iedere build
+# Compile shaders on every build
 set(SHADER_DIR "${CMAKE_SOURCE_DIR}/shaders")
 set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
@@ -124,10 +133,10 @@ add_custom_command(
 
 add_custom_target(CompileShaders DEPENDS ${SHADER_OUT_DIR}/vert.spv ${SHADER_OUT_DIR}/frag.spv)
 
-# Zorg ervoor dat de shaders worden gecompileerd voordat het project wordt gebouwd
+# Ensure shaders are compiled before building the project
 add_dependencies(VulkanProject CompileShaders)
 
-# Kopieer alleen de .spv bestanden naar de build-directory
+# Copy .spv files to build directory
 file(GLOB SPV_SHADERS "${SHADER_OUT_DIR}/*.spv")
 
 foreach(SHADER ${SPV_SHADERS})
@@ -135,7 +144,7 @@ foreach(SHADER ${SPV_SHADERS})
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${SHADER} ${CMAKE_BINARY_DIR}/shaders/
-        COMMENT "Copying from ${SHADER} to build-directory..."
+        COMMENT "Copying ${SHADER} to build directory..."
     )
 endforeach()
 
@@ -151,7 +160,7 @@ foreach(TEXTURE ${TEXTURE_FILES})
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${TEXTURE} ${TEXTURE_OUT_DIR}/
-        COMMENT "Copying texture ${TEXTURE} to build-directory..."
+        COMMENT "Copying texture ${TEXTURE} to build directory..."
     )
 endforeach()
 
@@ -171,6 +180,6 @@ foreach(MODEL ${MODEL_FILES})
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${MODEL}" "${DEST_PATH}"
-        COMMENT "Copying model ${MODEL} to build-directory..."
+        COMMENT "Copying model ${MODEL} to build directory..."
     )
 endforeach()
