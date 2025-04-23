@@ -27,27 +27,41 @@ DeviceBuilder& DeviceBuilder::setEnabledFeatures(const VkPhysicalDeviceFeatures&
     return *this;
 }
 
-DeviceBuilder& DeviceBuilder::setVulkan12Features(const VkPhysicalDeviceVulkan12Features& features)
-{
-	m_Vulkan12Features = features;
-    return *this;
-}
-
 DeviceBuilder& DeviceBuilder::enableValidationLayers(const std::vector<const char*>& validationLayers) 
 {
     m_ValidationLayers = validationLayers;
     return *this;
 }
 
+DeviceBuilder& DeviceBuilder::setVulkan11Features(const VkPhysicalDeviceVulkan11Features& features)
+{
+    m_Vulkan11Features = features;
+    m_UseVulkan11Features = true;
+    return *this;
+}
+
+DeviceBuilder& DeviceBuilder::setVulkan12Features(const VkPhysicalDeviceVulkan12Features& features)
+{
+    m_Vulkan12Features = features;
+    m_UseVulkan12Features = true;
+    return *this;
+}
+
+DeviceBuilder& DeviceBuilder::setVulkan13Features(const VkPhysicalDeviceVulkan13Features& features)
+{
+    m_Vulkan13Features = features;
+    m_UseVulkan13Features = true;
+    return *this;
+}
+
 Device* DeviceBuilder::build()
 {
-    // Create the logical device
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<uint32_t> uniqueQueueFamilies =
-    {
+    std::set<uint32_t> uniqueQueueFamilies = {
         m_QueueFamilyIndices.graphicsFamily.value(),
         m_QueueFamilyIndices.presentFamily.value()
     };
+
     float queuePriority = 1.0f;
     for (uint32_t queueFamily : uniqueQueueFamilies)
     {
@@ -59,35 +73,43 @@ Device* DeviceBuilder::build()
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    // Set up the VkPhysicalDeviceFeatures2 structure
-    VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
-    physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    physicalDeviceFeatures2.features = m_EnabledFeatures;
-
-    // Set up Vulkan 1.2 features structure
-    VkPhysicalDeviceVulkan12Features vulkan12Features = m_Vulkan12Features;
-    vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    vulkan12Features.pNext = nullptr;
-
-    // Check if VK_EXT_descriptor_indexing is enabled and set descriptorIndexing to VK_TRUE
-    for (const char* extension : m_RequiredExtensions)
-    {
-        if (strcmp(extension, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME) == 0)
-        {
-            vulkan12Features.descriptorIndexing = VK_TRUE;
-            break;
-        }
-    }
-
-    // Link the structures
-    physicalDeviceFeatures2.pNext = &vulkan12Features;
-
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.pNext = &physicalDeviceFeatures2; // Point to the features2 structure
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.features = m_EnabledFeatures;
+
+    // Chain the features
+    void* pNextChain = nullptr;
+
+    if (m_UseVulkan13Features)
+    {
+        m_Vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+        m_Vulkan13Features.pNext = pNextChain;
+        pNextChain = &m_Vulkan13Features;
+    }
+
+    if (m_UseVulkan12Features)
+    {
+        m_Vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        m_Vulkan12Features.pNext = pNextChain;
+        pNextChain = &m_Vulkan12Features;
+    }
+
+    if (m_UseVulkan11Features)
+    {
+        m_Vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+        m_Vulkan11Features.pNext = pNextChain;
+        pNextChain = &m_Vulkan11Features;
+    }
+
+    deviceFeatures2.pNext = pNextChain;
+    createInfo.pNext = &deviceFeatures2;
+
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.pEnabledFeatures = nullptr; // Must be nullptr when using pNext with VkPhysicalDeviceFeatures2
+
     createInfo.enabledExtensionCount = static_cast<uint32_t>(m_RequiredExtensions.size());
     createInfo.ppEnabledExtensionNames = m_RequiredExtensions.data();
 
@@ -104,14 +126,15 @@ Device* DeviceBuilder::build()
     VkDevice device;
     if (vkCreateDevice(m_PhysicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
     {
-        throw std::runtime_error("failed to create logical device!");
+        throw std::runtime_error("Failed to create logical device!");
     }
 
     VkQueue graphicsQueue;
-    VkQueue presentQueue;
     vkGetDeviceQueue(device, m_QueueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+
+    VkQueue presentQueue;
     vkGetDeviceQueue(device, m_QueueFamilyIndices.presentFamily.value(), 0, &presentQueue);
 
-    spdlog::debug("Logical device built with Vulkan 1.2 features enabled.");
     return new Device(device, graphicsQueue, presentQueue);
 }
+

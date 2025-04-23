@@ -52,17 +52,31 @@ void Renderer::initVulkan()
     VkPhysicalDeviceFeatures deviceFeatures{};
     deviceFeatures.samplerAnisotropy = VK_TRUE;
 
+	//Vulkan 1.1 features
+	VkPhysicalDeviceVulkan11Features vulkan11Features{};
+	vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+
+    //Vulkan 1.2 features
     VkPhysicalDeviceVulkan12Features vulkan12Features{};
     vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     vulkan12Features.runtimeDescriptorArray = VK_TRUE;
+	vulkan12Features.descriptorIndexing = VK_TRUE;
+
+	//Vulkan 1.3 features
+	VkPhysicalDeviceVulkan13Features vulkan13Features{};
+	vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	vulkan13Features.synchronization2 = VK_TRUE;
 
     m_pPhysicalDevice = PhysicalDeviceBuilder()
         .setInstance(m_pInstance->getInstance())
         .setSurface(m_pSurface->get())
         .addRequiredExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+        .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
         .setRequiredDeviceFeatures(deviceFeatures)
-        .setVulkan12Features(vulkan12Features)
+		.setVulkan11Features(vulkan11Features)
+		.setVulkan12Features(vulkan12Features)
+		.setVulkan13Features(vulkan13Features)
         .build();
 
     std::vector<const char*> validationLayers;
@@ -83,8 +97,11 @@ void Renderer::initVulkan()
         .setQueueFamilyIndices(m_pPhysicalDevice->getQueueFamilyIndices())
         .addRequiredExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
+        .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
         .setEnabledFeatures(m_pPhysicalDevice->getFeatures())
+		.setVulkan11Features(m_pPhysicalDevice->getVulkan11Features())
 		.setVulkan12Features(m_pPhysicalDevice->getVulkan12Features())
+		.setVulkan13Features(m_pPhysicalDevice->getVulkan13Features())
         .enableValidationLayers(validationLayers)
         .build();
 

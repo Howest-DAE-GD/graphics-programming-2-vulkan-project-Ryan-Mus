@@ -12,5 +12,13 @@ layout(binding = 1) uniform sampler2D texSamplers[]; // Descriptor array of samp
 void main() {
     // Use the texture index to sample from the correct texture
     vec4 texColor = texture(texSamplers[fragTexIndex], fragTexCoord); // Sample with alpha
-    outColor = vec4(fragColor * texColor.rgb, texColor.a); // Use texture alpha
+    
+    const float alphaThreshold = 0.5; // Set your desired alpha threshold
+
+    // Discard fragment if alpha is below threshold
+    if (texColor.a < alphaThreshold) {
+        discard;
+    }
+    
+    outColor = vec4(fragColor * texColor.rgb, 0); // Use texture alpha
 }

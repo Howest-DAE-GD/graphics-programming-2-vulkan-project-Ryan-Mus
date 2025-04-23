@@ -1,5 +1,4 @@
 #pragma once
-
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <optional>
@@ -10,7 +9,9 @@ public:
     PhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
         const std::vector<const char*>& requiredExtensions,
         const VkPhysicalDeviceFeatures& requiredFeatures,
-        const VkPhysicalDeviceVulkan12Features& vulkan12Features);
+        const VkPhysicalDeviceVulkan11Features* vulkan11Features = nullptr,
+        const VkPhysicalDeviceVulkan12Features* vulkan12Features = nullptr,
+        const VkPhysicalDeviceVulkan13Features* vulkan13Features = nullptr);
     ~PhysicalDevice() = default;
 
     PhysicalDevice(const PhysicalDevice&) = delete;
@@ -40,12 +41,15 @@ public:
     SwapChainSupportDetails querySwapChainSupport() const;
 
     const VkPhysicalDeviceFeatures& getFeatures() const;
+    const VkPhysicalDeviceVulkan11Features& getVulkan11Features() const;
     const VkPhysicalDeviceVulkan12Features& getVulkan12Features() const;
+    const VkPhysicalDeviceVulkan13Features& getVulkan13Features() const;
     const std::vector<const char*>& getExtensions() const;
 
 private:
     void pickPhysicalDevice();
     bool isDeviceSuitable(VkPhysicalDevice device);
+    bool checkFeatureSupport(VkPhysicalDevice device);
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const;
     bool checkDeviceExtensionSupport(VkPhysicalDevice device) const;
 
@@ -56,7 +60,12 @@ private:
     SwapChainSupportDetails m_SwapChainSupportDetails;
 
     std::vector<const char*> m_RequiredExtensions;
-    VkPhysicalDeviceFeatures m_RequiredFeatures;
-    VkPhysicalDeviceVulkan12Features m_Vulkan12Features;
+    VkPhysicalDeviceFeatures m_RequiredFeatures{};
+    VkPhysicalDeviceVulkan11Features m_Vulkan11Features{};
+    VkPhysicalDeviceVulkan12Features m_Vulkan12Features{};
+    VkPhysicalDeviceVulkan13Features m_Vulkan13Features{};
+
+    bool m_UseVulkan11Features{ false };
     bool m_UseVulkan12Features{ false };
+    bool m_UseVulkan13Features{ false };
 };

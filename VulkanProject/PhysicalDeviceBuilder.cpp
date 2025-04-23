@@ -27,6 +27,13 @@ PhysicalDeviceBuilder& PhysicalDeviceBuilder::setRequiredDeviceFeatures(const Vk
     return *this;
 }
 
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::setVulkan11Features(const VkPhysicalDeviceVulkan11Features& features)
+{
+    m_Vulkan11Features = features;
+    m_UseVulkan11Features = true;
+    return *this;
+}
+
 PhysicalDeviceBuilder& PhysicalDeviceBuilder::setVulkan12Features(const VkPhysicalDeviceVulkan12Features& features)
 {
     m_Vulkan12Features = features;
@@ -34,16 +41,26 @@ PhysicalDeviceBuilder& PhysicalDeviceBuilder::setVulkan12Features(const VkPhysic
     return *this;
 }
 
-PhysicalDevice* PhysicalDeviceBuilder::build() 
+PhysicalDeviceBuilder& PhysicalDeviceBuilder::setVulkan13Features(const VkPhysicalDeviceVulkan13Features& features)
 {
-    if (m_Instance == VK_NULL_HANDLE) 
-    {
-        throw std::runtime_error("VkInstance not set in PhysicalDeviceBuilder");
-    }
-    if (m_Surface == VK_NULL_HANDLE) 
-    {
-        throw std::runtime_error("VkSurfaceKHR not set in PhysicalDeviceBuilder");
-    }
-	spdlog::debug("Building PhysicalDevice.");
-    return new PhysicalDevice(m_Instance, m_Surface, m_RequiredExtensions, m_RequiredFeatures, m_Vulkan12Features);
+    m_Vulkan13Features = features;
+    m_UseVulkan13Features = true;
+    return *this;
 }
+
+
+PhysicalDevice* PhysicalDeviceBuilder::build()
+{
+    PhysicalDevice* physicalDevice = new PhysicalDevice(
+        m_Instance,
+        m_Surface,
+        m_RequiredExtensions,
+        m_RequiredFeatures,
+        m_UseVulkan11Features ? &m_Vulkan11Features : nullptr,
+        m_UseVulkan12Features ? &m_Vulkan12Features : nullptr,
+        m_UseVulkan13Features ? &m_Vulkan13Features : nullptr
+    );
+
+    return physicalDevice;
+}
+

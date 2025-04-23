@@ -6,17 +6,33 @@
 PhysicalDevice::PhysicalDevice(VkInstance instance, VkSurfaceKHR surface,
     const std::vector<const char*>& requiredExtensions,
     const VkPhysicalDeviceFeatures& requiredFeatures,
-    const VkPhysicalDeviceVulkan12Features& vulkan12Features)
-    : m_Instance(instance),
-    m_Surface(surface),
+    const VkPhysicalDeviceVulkan11Features* vulkan11Features,
+    const VkPhysicalDeviceVulkan12Features* vulkan12Features,
+    const VkPhysicalDeviceVulkan13Features* vulkan13Features)
+    : m_Instance(instance), m_Surface(surface),
     m_RequiredExtensions(requiredExtensions),
-    m_RequiredFeatures(requiredFeatures),
-    m_Vulkan12Features(vulkan12Features),
-    m_UseVulkan12Features(true)
+    m_RequiredFeatures(requiredFeatures)
 {
+    if (vulkan11Features)
+    {
+        m_Vulkan11Features = *vulkan11Features;
+        m_UseVulkan11Features = true;
+    }
+
+    if (vulkan12Features)
+    {
+        m_Vulkan12Features = *vulkan12Features;
+        m_UseVulkan12Features = true;
+    }
+
+    if (vulkan13Features)
+    {
+        m_Vulkan13Features = *vulkan13Features;
+        m_UseVulkan13Features = true;
+    }
 
     pickPhysicalDevice();
-    spdlog::debug("Physical device created.");
+	spdlog::debug("PhysicalDevice created.");
 }
 
 // Move constructor
@@ -27,9 +43,13 @@ PhysicalDevice::PhysicalDevice(PhysicalDevice&& other) noexcept
     m_QueueFamilyIndices(std::move(other.m_QueueFamilyIndices)),
     m_SwapChainSupportDetails(std::move(other.m_SwapChainSupportDetails)),
     m_RequiredExtensions(std::move(other.m_RequiredExtensions)),
-    m_RequiredFeatures(other.m_RequiredFeatures),
-    m_Vulkan12Features(other.m_Vulkan12Features),
-    m_UseVulkan12Features(other.m_UseVulkan12Features)
+	m_RequiredFeatures(other.m_RequiredFeatures),
+	m_Vulkan11Features(other.m_Vulkan11Features),
+	m_Vulkan12Features(other.m_Vulkan12Features),
+	m_Vulkan13Features(other.m_Vulkan13Features),
+	m_UseVulkan11Features(other.m_UseVulkan11Features),
+	m_UseVulkan12Features(other.m_UseVulkan12Features),
+	m_UseVulkan13Features(other.m_UseVulkan13Features)
 {
     other.m_PhysicalDevice = VK_NULL_HANDLE;
 }
@@ -46,8 +66,12 @@ PhysicalDevice& PhysicalDevice::operator=(PhysicalDevice&& other) noexcept
         m_SwapChainSupportDetails = std::move(other.m_SwapChainSupportDetails);
         m_RequiredExtensions = std::move(other.m_RequiredExtensions);
         m_RequiredFeatures = other.m_RequiredFeatures;
-        m_Vulkan12Features = other.m_Vulkan12Features;
-        m_UseVulkan12Features = other.m_UseVulkan12Features;
+		m_Vulkan11Features = other.m_Vulkan11Features;
+		m_Vulkan12Features = other.m_Vulkan12Features;
+		m_Vulkan13Features = other.m_Vulkan13Features;
+		m_UseVulkan11Features = other.m_UseVulkan11Features;
+		m_UseVulkan12Features = other.m_UseVulkan12Features;
+		m_UseVulkan13Features = other.m_UseVulkan13Features;
 
         other.m_PhysicalDevice = VK_NULL_HANDLE;
     }
@@ -87,11 +111,71 @@ void PhysicalDevice::pickPhysicalDevice()
             break;
         }
     }
+    if (!checkFeatureSupport(m_PhysicalDevice))
+    {
+        throw std::runtime_error("Required features are not supported by the selected physical device.");
+    }
 
     if (m_PhysicalDevice == VK_NULL_HANDLE)
     {
         throw std::runtime_error("Failed to find a suitable GPU!");
     }
+}
+
+bool PhysicalDevice::checkFeatureSupport(VkPhysicalDevice device)
+{
+    VkPhysicalDeviceFeatures2 supportedFeatures2{};
+    supportedFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+    VkPhysicalDeviceVulkan11Features supportedVulkan11Features{};
+    supportedVulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+
+    VkPhysicalDeviceVulkan12Features supportedVulkan12Features{};
+    supportedVulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+    VkPhysicalDeviceVulkan13Features supportedVulkan13Features{};
+    supportedVulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+
+    // Chain the features
+	supportedFeatures2.pNext = &supportedVulkan11Features;
+	supportedVulkan11Features.pNext = &supportedVulkan12Features;
+	supportedVulkan12Features.pNext = &supportedVulkan13Features;
+
+    vkGetPhysicalDeviceFeatures2(device, &supportedFeatures2);
+
+    // Check Vulkan 1.0 features
+    if (m_RequiredFeatures.samplerAnisotropy && !supportedFeatures2.features.samplerAnisotropy)
+    {
+        return false;
+    }
+ 
+    // Check Vulkan 1.1 features
+    if (m_UseVulkan11Features)
+    {
+        // ... check other Vulkan 1.1 features
+    }
+
+    // Check Vulkan 1.2 features
+    if (m_UseVulkan12Features)
+    {
+        if (m_Vulkan12Features.runtimeDescriptorArray && !supportedVulkan12Features.runtimeDescriptorArray)
+        {
+            return false;
+        }
+        // ... check other Vulkan 1.2 features
+    }
+
+    // Check Vulkan 1.3 features
+    if (m_UseVulkan13Features)
+    {
+		if (m_Vulkan13Features.synchronization2 && !supportedVulkan13Features.synchronization2)
+		{
+			return false;
+		}
+        // ... check Vulkan 1.3 features
+    }
+
+    return true;
 }
 
 bool PhysicalDevice::isDeviceSuitable(VkPhysicalDevice device)
@@ -211,12 +295,23 @@ const VkPhysicalDeviceFeatures& PhysicalDevice::getFeatures() const
     return m_RequiredFeatures;
 }
 
+const std::vector<const char*>& PhysicalDevice::getExtensions() const
+{
+    return m_RequiredExtensions;
+}
+
+const VkPhysicalDeviceVulkan11Features& PhysicalDevice::getVulkan11Features() const
+{
+	return m_Vulkan11Features;
+}
+
 const VkPhysicalDeviceVulkan12Features& PhysicalDevice::getVulkan12Features() const
 {
 	return m_Vulkan12Features;
 }
 
-const std::vector<const char*>& PhysicalDevice::getExtensions() const
+const VkPhysicalDeviceVulkan13Features& PhysicalDevice::getVulkan13Features() const
 {
-    return m_RequiredExtensions;
+	return m_Vulkan13Features;
 }
+
