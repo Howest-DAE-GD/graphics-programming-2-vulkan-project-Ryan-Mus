@@ -18,13 +18,18 @@ public:
 
     VkImageView createImageView(VkFormat format, VkImageAspectFlags aspectFlags);
 
-    void transitionImageLayout(VkCommandPool commandPool, VkQueue graphicsQueue,
+    void transitionImageLayout(CommandPool* commandPool, VkQueue graphicsQueue,
                                VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 
 	void copyBufferToImage(CommandPool* commandPool, VkBuffer buffer, uint32_t width, uint32_t height);
 
     VkImage getImage() const;
     VmaAllocation getAllocation() const;
+
+	bool hasStencilComponent(VkFormat format) const
+	{
+		return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+	}
 
 private:
     Device* m_pDevice;

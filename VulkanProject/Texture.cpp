@@ -83,7 +83,7 @@ void Texture::createTextureImage()
 
     // Transition image layouts and copy buffer to image
     m_pTextureImage->transitionImageLayout(
-        m_pCommandPool->get(),
+        m_pCommandPool,
         m_pDevice->getGraphicsQueue(),
         VK_FORMAT_R8G8B8A8_SRGB,
         VK_IMAGE_LAYOUT_UNDEFINED,
@@ -98,7 +98,7 @@ void Texture::createTextureImage()
     );
 
     m_pTextureImage->transitionImageLayout(
-        m_pCommandPool->get(),
+        m_pCommandPool,
         m_pDevice->getGraphicsQueue(),
         VK_FORMAT_R8G8B8A8_SRGB,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,

@@ -189,7 +189,7 @@ void Renderer::createDepthResources()
     m_DepthImageView = m_pDepthImage->createImageView(depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     m_pDepthImage->transitionImageLayout(
-        m_pCommandPool->get(),
+        m_pCommandPool,
         m_pDevice->getGraphicsQueue(),
         depthFormat,
         VK_IMAGE_LAYOUT_UNDEFINED,
@@ -345,7 +345,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     }
 }
 
-void Renderer::drawFrame() 
+void Renderer::drawFrame()
 {
     vkWaitForFences(m_pDevice->get(), 1, m_pSyncObjects->getInFlightFence(m_currentFrame), VK_TRUE, UINT64_MAX);
 
@@ -361,7 +361,8 @@ void Renderer::drawFrame()
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreateSwapChain();
         return;
-    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    }
+    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
@@ -372,43 +373,70 @@ void Renderer::drawFrame()
 
     updateUniformBuffer(m_currentFrame);
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // Prepare VkCommandBufferSubmitInfo
+    VkCommandBufferSubmitInfo commandBufferInfo{};
+    commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    commandBufferInfo.pNext = nullptr;
+    commandBufferInfo.commandBuffer = m_CommandBuffers[m_currentFrame];
+    commandBufferInfo.deviceMask = 0;
 
-    VkSemaphore waitSemaphores[] = { *m_pSyncObjects->getImageAvailableSemaphore(m_currentFrame) };
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
+    // Prepare VkSemaphoreSubmitInfo for wait semaphore
+    VkSemaphoreSubmitInfo waitSemaphoreInfo{};
+    waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    waitSemaphoreInfo.pNext = nullptr;
+    waitSemaphoreInfo.semaphore = *m_pSyncObjects->getImageAvailableSemaphore(m_currentFrame);
+    waitSemaphoreInfo.value = 0;
+    waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    waitSemaphoreInfo.deviceIndex = 0;
 
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &m_CommandBuffers[m_currentFrame];
+    // Prepare VkSemaphoreSubmitInfo for signal semaphore
+    VkSemaphoreSubmitInfo signalSemaphoreInfo{};
+    signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signalSemaphoreInfo.pNext = nullptr;
+    signalSemaphoreInfo.semaphore = *m_pSyncObjects->getRenderFinishedSemaphore(m_currentFrame);
+    signalSemaphoreInfo.value = 0;
+    signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    signalSemaphoreInfo.deviceIndex = 0;
 
-    VkSemaphore signalSemaphores[] = { *m_pSyncObjects->getRenderFinishedSemaphore(m_currentFrame) };
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
+    // Prepare VkSubmitInfo2
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.pNext = nullptr;
+    submitInfo.flags = 0;
+    submitInfo.waitSemaphoreInfoCount = 1;
+    submitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &commandBufferInfo;
+    submitInfo.signalSemaphoreInfoCount = 1;
+    submitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
 
-    if (vkQueueSubmit(m_pDevice->getGraphicsQueue(), 1, &submitInfo, *m_pSyncObjects->getInFlightFence(m_currentFrame)) != VK_SUCCESS) {
+    // Submit the command buffer using vkQueueSubmit2
+    if (vkQueueSubmit2(m_pDevice->getGraphicsQueue(), 1, &submitInfo, *m_pSyncObjects->getInFlightFence(m_currentFrame)) != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
 
+    // **Updated Section: Include the RenderFinishedSemaphore in vkQueuePresentKHR**
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
+    // Wait on the RenderFinishedSemaphore before presenting
+    VkSemaphore waitSemaphores[] = { *m_pSyncObjects->getRenderFinishedSemaphore(m_currentFrame) };
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
+    presentInfo.pWaitSemaphores = waitSemaphores;
 
     VkSwapchainKHR swapChains[] = { m_pSwapChain->get() };
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
+    presentInfo.pResults = nullptr;
 
     result = vkQueuePresentKHR(m_pDevice->getPresentQueue(), &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_pWindow->isFramebufferResized()) {
         m_pWindow->resetFramebufferResized();
         recreateSwapChain();
-    } else if (result != VK_SUCCESS) {
+    }
+    else if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to present swap chain image!");
     }
 
