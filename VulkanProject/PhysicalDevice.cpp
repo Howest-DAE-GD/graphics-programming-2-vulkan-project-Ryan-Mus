@@ -172,6 +172,10 @@ bool PhysicalDevice::checkFeatureSupport(VkPhysicalDevice device)
 		{
 			return false;
 		}
+		if (m_Vulkan13Features.dynamicRendering && !supportedVulkan13Features.dynamicRendering)
+		{
+			return false;
+		}
         // ... check Vulkan 1.3 features
     }
 

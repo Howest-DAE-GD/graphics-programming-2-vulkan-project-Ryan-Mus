@@ -16,6 +16,9 @@ public:
     GraphicsPipelineBuilder& setVertexInputBindingDescription(const VkVertexInputBindingDescription& bindingDescription);
     GraphicsPipelineBuilder& setVertexInputAttributeDescriptions(const std::vector<VkVertexInputAttributeDescription>& attributeDescriptions);
     GraphicsPipelineBuilder& setShaderPaths(const std::string& vertShaderPath, const std::string& fragShaderPath);
+    GraphicsPipelineBuilder& setColorFormat(VkFormat colorFormat);
+    GraphicsPipelineBuilder& setDepthFormat(VkFormat depthFormat);
+
     GraphicsPipeline* build();
 
 private:
@@ -27,4 +30,6 @@ private:
     std::vector<VkVertexInputAttributeDescription> m_AttributeDescriptions{};
     std::string m_VertShaderPath;
     std::string m_FragShaderPath;
+    VkFormat m_ColorFormat{ VK_FORMAT_UNDEFINED };
+    VkFormat m_DepthFormat{ VK_FORMAT_UNDEFINED };
 };

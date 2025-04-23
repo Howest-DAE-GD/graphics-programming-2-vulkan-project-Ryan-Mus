@@ -41,7 +41,7 @@ private:
     void initVulkan();
     void createVmaAllocator();
     void createDepthResources();
-    void createFramebuffers();
+    //void createFramebuffers();
     void createUniformBuffers();
     void createCommandBuffers();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
@@ -52,6 +52,16 @@ private:
     // Helper functions
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    void transitionImageLayout(
+        VkCommandBuffer commandBuffer,
+        VkImage image,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout,
+        VkPipelineStageFlags2 srcStageMask,
+        VkPipelineStageFlags2 dstStageMask,
+        VkAccessFlags2 srcAccessMask,
+        VkAccessFlags2 dstAccessMask);
+
 
     Window* m_pWindow;
 
@@ -61,7 +71,7 @@ private:
     PhysicalDevice* m_pPhysicalDevice;
     Device* m_pDevice;
     SwapChain* m_pSwapChain;
-    RenderPass* m_pRenderPass;
+    //RenderPass* m_pRenderPass;
     DescriptorManager* m_pDescriptorManager;
     GraphicsPipeline* m_pGraphicsPipeline;
     CommandPool* m_pCommandPool;
@@ -72,7 +82,7 @@ private:
     Model* m_pModel;
     std::vector<Buffer*> m_pUniformBuffers;
     std::vector<VkCommandBuffer> m_CommandBuffers;
-    std::vector<VkFramebuffer> m_SwapChainFramebuffers;
+    //std::vector<VkFramebuffer> m_SwapChainFramebuffers;
     Image* m_pDepthImage;
     VkImageView m_DepthImageView;
     VmaAllocator m_VmaAllocator = nullptr;

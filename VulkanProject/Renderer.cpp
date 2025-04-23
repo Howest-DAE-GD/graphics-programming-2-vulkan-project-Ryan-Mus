@@ -66,6 +66,7 @@ void Renderer::initVulkan()
 	VkPhysicalDeviceVulkan13Features vulkan13Features{};
 	vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
 	vulkan13Features.synchronization2 = VK_TRUE;
+	vulkan13Features.dynamicRendering = VK_TRUE;
 
     m_pPhysicalDevice = PhysicalDeviceBuilder()
         .setInstance(m_pInstance->getInstance())
@@ -73,6 +74,7 @@ void Renderer::initVulkan()
         .addRequiredExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
+		.addRequiredExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
         .setRequiredDeviceFeatures(deviceFeatures)
 		.setVulkan11Features(vulkan11Features)
 		.setVulkan12Features(vulkan12Features)
@@ -98,6 +100,7 @@ void Renderer::initVulkan()
         .addRequiredExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
+		.addRequiredExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
         .setEnabledFeatures(m_pPhysicalDevice->getFeatures())
 		.setVulkan11Features(m_pPhysicalDevice->getVulkan11Features())
 		.setVulkan12Features(m_pPhysicalDevice->getVulkan12Features())
@@ -115,7 +118,7 @@ void Renderer::initVulkan()
         .setPresentFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().presentFamily.value())
         .build();
 
-    m_pRenderPass = new RenderPass(m_pDevice->get(), m_pSwapChain->getImageFormat(), findDepthFormat());
+    //m_pRenderPass = new RenderPass(m_pDevice->get(), m_pSwapChain->getImageFormat(), findDepthFormat());
 
     m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT,0);
     m_pDescriptorManager->createDescriptorSetLayout();
@@ -124,7 +127,7 @@ void Renderer::initVulkan()
 
     createVmaAllocator();
     createDepthResources();
-    createFramebuffers();
+    //createFramebuffers();
 
     m_pModel = new Model(m_VmaAllocator, m_pDevice,m_pPhysicalDevice, m_pCommandPool, MODEL_PATH_);
     m_pModel->loadModel();
@@ -154,9 +157,10 @@ void Renderer::initVulkan()
 
     m_pGraphicsPipeline = GraphicsPipelineBuilder()
         .setDevice(m_pDevice->get())
-        .setRenderPass(m_pRenderPass->get())
         .setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
         .setSwapChainExtent(m_pSwapChain->getExtent())
+        .setColorFormat(m_pSwapChain->getImageFormat())
+        .setDepthFormat(findDepthFormat())
         .setVertexInputBindingDescription(Vertex::getBindingDescription())
         .setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
         .setShaderPaths("shaders/vert.spv", "shaders/frag.spv")
@@ -224,30 +228,30 @@ VkFormat Renderer::findSupportedFormat(
     throw std::runtime_error("failed to find supported format!");
 }
 
-void Renderer::createFramebuffers() 
-{
-    m_SwapChainFramebuffers.resize(m_pSwapChain->getImageViews().size());
-
-    for (size_t i = 0; i < m_pSwapChain->getImageViews().size(); i++) {
-        std::array<VkImageView, 2> attachments = {
-            m_pSwapChain->getImageViews()[i],
-            m_DepthImageView
-        };
-
-        VkFramebufferCreateInfo framebufferInfo{};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = m_pRenderPass->get();
-        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = m_pSwapChain->getExtent().width;
-        framebufferInfo.height = m_pSwapChain->getExtent().height;
-        framebufferInfo.layers = 1;
-
-        if (vkCreateFramebuffer(m_pDevice->get(), &framebufferInfo, nullptr, &m_SwapChainFramebuffers[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create framebuffer!");
-        }
-    }
-}
+//void Renderer::createFramebuffers() 
+//{
+//    m_SwapChainFramebuffers.resize(m_pSwapChain->getImageViews().size());
+//
+//    for (size_t i = 0; i < m_pSwapChain->getImageViews().size(); i++) {
+//        std::array<VkImageView, 2> attachments = {
+//            m_pSwapChain->getImageViews()[i],
+//            m_DepthImageView
+//        };
+//
+//        VkFramebufferCreateInfo framebufferInfo{};
+//        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+//        framebufferInfo.renderPass = m_pRenderPass->get();
+//        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+//        framebufferInfo.pAttachments = attachments.data();
+//        framebufferInfo.width = m_pSwapChain->getExtent().width;
+//        framebufferInfo.height = m_pSwapChain->getExtent().height;
+//        framebufferInfo.layers = 1;
+//
+//        if (vkCreateFramebuffer(m_pDevice->get(), &framebufferInfo, nullptr, &m_SwapChainFramebuffers[i]) != VK_SUCCESS) {
+//            throw std::runtime_error("failed to create framebuffer!");
+//        }
+//    }
+//}
 
 void Renderer::createUniformBuffers() 
 {
@@ -283,6 +287,7 @@ void Renderer::createCommandBuffers()
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
+    // Begin command buffer
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -290,21 +295,40 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = m_pRenderPass->get();
-    renderPassInfo.framebuffer = m_SwapChainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = { 0, 0 };
-    renderPassInfo.renderArea.extent = m_pSwapChain->getExtent();
+    // Manually transition swapchain image layout to COLOR_ATTACHMENT_OPTIMAL
+    transitionImageLayout(commandBuffer, m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_NONE, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
 
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-    clearValues[1].depthStencil = { 1.0f, 0 };
+    // Begin dynamic rendering
+    VkRenderingAttachmentInfo colorAttachment{};
+    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachment.imageView = m_pSwapChain->getImageViews()[imageIndex];
+    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.clearValue.color = { {0.0f, 0.0f, 0.0f, 1.0f} };
 
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
+    VkRenderingAttachmentInfo depthAttachment{};
+    depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAttachment.imageView = m_DepthImageView;
+    depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.clearValue.depthStencil = { 1.0f, 0 };
 
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.offset = { 0, 0 };
+    renderingInfo.renderArea.extent = m_pSwapChain->getExtent();
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.pDepthAttachment = &depthAttachment;
+
+    vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pGraphicsPipeline->get());
 
         // Bind vertex and index buffers from the model
@@ -338,12 +362,21 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
             0,
             nullptr);
         vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(m_pModel->getIndexCount()), 1, 0, 0, 0);
-    vkCmdEndRenderPass(commandBuffer);
 
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+    vkCmdEndRendering(commandBuffer);
+
+    // Transition swapchain image layout to PRESENT_SRC_KHR for presentation
+    transitionImageLayout(commandBuffer, m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_NONE,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_NONE);
+
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) 
+    {
         throw std::runtime_error("failed to record command buffer!");
     }
 }
+
 
 void Renderer::drawFrame()
 {
@@ -499,17 +532,50 @@ void Renderer::recreateSwapChain()
         .build();
 
     createDepthResources();
-    createFramebuffers();
+    //createFramebuffers();
 }
+
+void Renderer::transitionImageLayout(
+    VkCommandBuffer commandBuffer,
+    VkImage image,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    VkPipelineStageFlags2 srcStageMask,
+    VkPipelineStageFlags2 dstStageMask,
+    VkAccessFlags2 srcAccessMask,
+    VkAccessFlags2 dstAccessMask)
+{
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcStageMask = srcStageMask;
+    barrier.dstStageMask = dstStageMask;
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstAccessMask = dstAccessMask;
+    barrier.image = image;
+    barrier.subresourceRange = {
+        VK_IMAGE_ASPECT_COLOR_BIT, // Adjust for depth images
+        0, 1, 0, 1
+    };
+
+    VkDependencyInfo dependencyInfo{};
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.imageMemoryBarrierCount = 1;
+    dependencyInfo.pImageMemoryBarriers = &barrier;
+
+    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+}
+
 
 void Renderer::cleanupSwapChain() 
 {
     vkDestroyImageView(m_pDevice->get(), m_DepthImageView, nullptr);
     delete m_pDepthImage;
 
-    for (auto framebuffer : m_SwapChainFramebuffers) {
+    /*for (auto framebuffer : m_SwapChainFramebuffers) {
         vkDestroyFramebuffer(m_pDevice->get(), framebuffer, nullptr);
-    }
+    }*/
 
     delete m_pSwapChain;
 }
@@ -528,7 +594,7 @@ void Renderer::cleanup()
     vmaDestroyAllocator(m_VmaAllocator);
 
     delete m_pGraphicsPipeline;
-    delete m_pRenderPass;
+    //delete m_pRenderPass;
     delete m_pSyncObjects;
     delete m_pCommandPool;
     delete m_pDevice;
