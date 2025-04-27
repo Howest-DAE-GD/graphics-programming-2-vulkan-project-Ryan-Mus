@@ -622,6 +622,7 @@ void Renderer::recreateSwapChain()
         .setHeight(height)
         .setGraphicsFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value())
         .setPresentFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().presentFamily.value())
+		.setImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         .build();
 
 	createGBuffer();
@@ -666,13 +667,13 @@ void Renderer::createGBuffer()
     // Create diffuse image
 	m_GBuffer.pDiffuseImage = new Image(m_pDevice, m_VmaAllocator);
     m_GBuffer.pDiffuseImage->createImage(
-       m_pSwapChain->getExtent().width,
-       m_pSwapChain->getExtent().height,
-       VK_FORMAT_R8G8B8A8_SRGB, // Use linear format for intermediate rendering
-       VK_IMAGE_TILING_OPTIMAL,
-       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-       VMA_MEMORY_USAGE_GPU_ONLY
-   );
+        m_pSwapChain->getExtent().width,
+        m_pSwapChain->getExtent().height,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY
+    );
 
     m_GBuffer.pDiffuseImage->transitionImageLayout(
         m_pCommandPool,

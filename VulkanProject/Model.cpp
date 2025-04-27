@@ -100,8 +100,8 @@ void Model::loadModel()
         size_t indexOffset = 0;
         size_t numFaces = shape.mesh.num_face_vertices.size();
 
-		glm::vec3 bboxMin = { FLT_MAX, FLT_MAX, FLT_MAX };
-		glm::vec3 bboxMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+        glm::vec3 bboxMin = { FLT_MAX, FLT_MAX, FLT_MAX };
+        glm::vec3 bboxMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
 
         // Map to store material to indices mapping for this shape
         std::unordered_map<int, std::vector<uint32_t>> materialToIndices;
@@ -141,14 +141,25 @@ void Model::loadModel()
                     vertex.texCoord = { 0.0f, 0.0f };
                 }
 
+                if (idx.normal_index >= 0)
+                {
+                    vertex.normal = {
+                        attrib.normals[3 * idx.normal_index + 0],
+                        attrib.normals[3 * idx.normal_index + 1],
+                        attrib.normals[3 * idx.normal_index + 2]
+                    };
+                }
+                else
+                {
+                    vertex.normal = { 0.0f, 0.0f, 1.0f }; // Default normal
+                }
+
                 // Check if vertex is already in uniqueVertices
                 if (uniqueVertices.count(vertex) == 0)
                 {
                     uniqueVertices[vertex] = static_cast<uint32_t>(m_Vertices.size());
                     m_Vertices.push_back(vertex);
                 }
-
-				
 
                 uint32_t index = uniqueVertices[vertex];
                 materialToIndices[materialId].push_back(index);
@@ -166,8 +177,8 @@ void Model::loadModel()
             submesh.indexStart = static_cast<uint32_t>(m_Indices.size());
             submesh.indexCount = static_cast<uint32_t>(indices.size());
             submesh.materialIndex = static_cast<uint32_t>(materialId);
-			submesh.bboxMin = bboxMin;
-			submesh.bboxMax = bboxMax;
+            submesh.bboxMin = bboxMin;
+            submesh.bboxMax = bboxMax;
 
             m_Submeshes.push_back(submesh);
             m_Indices.insert(m_Indices.end(), indices.begin(), indices.end());
@@ -176,6 +187,7 @@ void Model::loadModel()
 
     spdlog::debug("Loaded model with {} vertices, {} indices, and {} materials.", m_Vertices.size(), m_Indices.size(), m_Materials.size());
 }
+
 
 void Model::createVertexBuffer() 
 {
@@ -271,7 +283,7 @@ VkVertexInputBindingDescription Vertex::getBindingDescription()
 
 std::vector<VkVertexInputAttributeDescription> Vertex::getAttributeDescriptions()
 {
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(2);
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(3);
 
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
@@ -282,6 +294,11 @@ std::vector<VkVertexInputAttributeDescription> Vertex::getAttributeDescriptions(
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(Vertex, texCoord);
+
+	attributeDescriptions[2].binding = 0;
+	attributeDescriptions[2].location = 2;
+	attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+	attributeDescriptions[2].offset = offsetof(Vertex, normal);
 
     return attributeDescriptions;
 }
