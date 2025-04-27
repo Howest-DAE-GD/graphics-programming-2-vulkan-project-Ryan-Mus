@@ -25,6 +25,8 @@
 #include <vector>
 #include <string>
 
+
+
 class Renderer 
 {
 public:
@@ -40,8 +42,9 @@ public:
 private:
     void initVulkan();
     void createVmaAllocator();
-    void createDepthResources();
+    //void createDepthResources();
     //void createFramebuffers();
+    void createGBuffer();
     void createUniformBuffers();
     void createCommandBuffers();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
@@ -62,6 +65,25 @@ private:
         VkAccessFlags2 srcAccessMask,
         VkAccessFlags2 dstAccessMask);
 
+    struct UniformBufferObject
+    {
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 proj;
+        alignas(16) glm::vec3 cameraPosition; 
+    };
+
+    struct GBuffer
+    {
+        Image* pDiffuseImage;
+		VkImageView diffuseImageView;
+
+		Image* pSpecularImage;
+		VkImageView specularImageView;
+
+        Image* pDepthImage;
+		VkImageView depthImageView;
+    };
 
     Window* m_pWindow;
 
@@ -74,6 +96,7 @@ private:
     //RenderPass* m_pRenderPass;
     DescriptorManager* m_pDescriptorManager;
     GraphicsPipeline* m_pGraphicsPipeline;
+	GraphicsPipeline* m_pGBufferPipeline;
     CommandPool* m_pCommandPool;
     SynchronizationObjects* m_pSyncObjects;
 
@@ -83,13 +106,14 @@ private:
     std::vector<Buffer*> m_pUniformBuffers;
     std::vector<VkCommandBuffer> m_CommandBuffers;
     //std::vector<VkFramebuffer> m_SwapChainFramebuffers;
-    Image* m_pDepthImage;
-    VkImageView m_DepthImageView;
     VmaAllocator m_VmaAllocator = nullptr;
 
     uint32_t m_currentFrame = 0;
 
     const int MAX_FRAMES_IN_FLIGHT = 2;
+
+    UniformBufferObject m_UniformBufferObject{};
+	GBuffer m_GBuffer;
 
     // Paths
     const std::string MODEL_PATH_ = "models/sponza.obj";

@@ -6,7 +6,7 @@
 
 #include "GraphicsPipeline.h"
 
-class GraphicsPipelineBuilder 
+class GraphicsPipelineBuilder
 {
 public:
     GraphicsPipelineBuilder& setDevice(VkDevice device);
@@ -16,8 +16,9 @@ public:
     GraphicsPipelineBuilder& setVertexInputBindingDescription(const VkVertexInputBindingDescription& bindingDescription);
     GraphicsPipelineBuilder& setVertexInputAttributeDescriptions(const std::vector<VkVertexInputAttributeDescription>& attributeDescriptions);
     GraphicsPipelineBuilder& setShaderPaths(const std::string& vertShaderPath, const std::string& fragShaderPath);
-    GraphicsPipelineBuilder& setColorFormat(VkFormat colorFormat);
+    GraphicsPipelineBuilder& setColorFormats(const std::vector<VkFormat>& colorFormats); // Updated to support multiple formats
     GraphicsPipelineBuilder& setDepthFormat(VkFormat depthFormat);
+    GraphicsPipelineBuilder& setAttachmentCount(uint16_t attachmentCount);
 
     GraphicsPipeline* build();
 
@@ -30,6 +31,8 @@ private:
     std::vector<VkVertexInputAttributeDescription> m_AttributeDescriptions{};
     std::string m_VertShaderPath;
     std::string m_FragShaderPath;
-    VkFormat m_ColorFormat{ VK_FORMAT_UNDEFINED };
+    std::vector<VkFormat> m_ColorFormats{}; // Store multiple color formats
     VkFormat m_DepthFormat{ VK_FORMAT_UNDEFINED };
+    uint16_t m_AttachmentCount{ 0 };
 };
+

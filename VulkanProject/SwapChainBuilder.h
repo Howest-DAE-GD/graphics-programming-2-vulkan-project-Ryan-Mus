@@ -13,6 +13,7 @@ public:
     SwapChainBuilder& setHeight(uint32_t height);
     SwapChainBuilder& setGraphicsFamilyIndex(uint32_t index);
     SwapChainBuilder& setPresentFamilyIndex(uint32_t index);
+	SwapChainBuilder& setImageUsage(VkImageUsageFlags usage);
 
     SwapChain* build();
 
@@ -37,4 +38,5 @@ private:
     uint32_t m_Height{ 0 };
     uint32_t m_GraphicsFamilyIndex{ 0 };
     uint32_t m_PresentFamilyIndex{ 0 };
+	VkImageUsageFlags m_ImageUsage{ VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT };
 };

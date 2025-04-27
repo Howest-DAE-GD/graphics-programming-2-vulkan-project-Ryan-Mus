@@ -16,7 +16,7 @@ Model::~Model()
     delete m_pVertexBuffer;
     delete m_pIndexBuffer;
 
-    for (Texture* texture : m_Textures)
+    for (Material* texture : m_Materials)
     {
         delete texture;
     }
@@ -40,125 +40,141 @@ std::string normalizePath(const std::string& path)
 void Model::loadModel()
 {
     spdlog::debug("Loading model from path: {}", m_ModelPath);
-    spdlog::info("Be patient, lots of duplicate materials are created because of tinyObj");
+    std::string base_dir = "models/";
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     std::string err;
-    std::string base_dir = "models/";  // Base directory for the OBJ file
-    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, m_ModelPath.c_str(), base_dir.c_str()))
+
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, normalizePath(m_ModelPath).c_str(), base_dir.c_str());
+    if (!err.empty())
     {
-        spdlog::error("Failed to load model: {}", err);
-        throw std::runtime_error(err);
+        spdlog::error("TinyObjLoader: {}", err);
     }
-    if (!err.empty()) {
-        spdlog::warn("Warning: {}", err);
-    }
-    // Deduplicate materials by name
-    std::unordered_map<std::string, int> materialNameToIndex;
-    std::vector<tinyobj::material_t> uniqueMaterials;
-    for (const auto& material : materials) {
-        // Check if we've seen this material name before
-        if (materialNameToIndex.find(material.name) == materialNameToIndex.end()) {
-            // New material, add it to our unique list
-            materialNameToIndex[material.name] = static_cast<int>(uniqueMaterials.size());
-            uniqueMaterials.push_back(material);
-        }
-    }
-    spdlog::info("Materials loaded: {} original materials deduped to {} unique materials",
-        materials.size(), uniqueMaterials.size());
-    // Replace original materials with deduplicated ones
-    materials = std::move(uniqueMaterials);
-    // Map to store material indices for shapes, translating from original to deduplicated indices
-    std::vector<int> materialIndexMap(materials.size());
-    for (size_t i = 0; i < materials.size(); ++i) {
-        materialIndexMap[i] = materialNameToIndex[materials[i].name];
+    if (!ret)
+    {
+        throw std::runtime_error("Failed to load model");
     }
 
-    // Create a mapping from material ID to texture ID
-    std::unordered_map<int, uint32_t> materialToTextureIndex;
-    // Default texture for materials without diffuse textures
-    uint32_t defaultTextureIndex = 0;
-    bool hasDefaultTexture = false;
+    // Load materials
+    m_Materials.resize(materials.size());
 
-    // Iterate over materials to load textures
     for (size_t i = 0; i < materials.size(); ++i)
     {
-        const auto& material = materials[i];
-        if (!material.diffuse_texname.empty())
+        std::string diffuseTexturePath = materials[i].diffuse_texname;
+        std::string specularTexturePath = materials[i].specular_texname;
+        std::string alphaTexturePath = materials[i].alpha_texname;
+
+        if (diffuseTexturePath.empty())
         {
-            std::string texturePath = base_dir + normalizePath(material.diffuse_texname);
-            Texture* texture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, texturePath, m_pPhysicalDevice->get());
-            uint32_t textureIndex = static_cast<uint32_t>(m_Textures.size());
-            m_Textures.push_back(texture);
-            materialToTextureIndex[i] = textureIndex;
+            diffuseTexturePath = "default_white.png";
         }
-        else
+        if (specularTexturePath.empty())
         {
-            // For materials without diffuse textures, either use a default texture or create one
-            if (!hasDefaultTexture) {
-                // Create or load a default white texture
-                Texture* defaultTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool,
-                    base_dir + "default_white.png", m_pPhysicalDevice->get());
-                defaultTextureIndex = static_cast<uint32_t>(m_Textures.size());
-                m_Textures.push_back(defaultTexture);
-                hasDefaultTexture = true;
-            }
-            materialToTextureIndex[i] = defaultTextureIndex;
+            specularTexturePath = "default_black.png";
         }
+        if (alphaTexturePath.empty())
+        {
+            alphaTexturePath = "default_white.png";
+        }
+
+        m_Materials[i] = new Material();
+        m_Materials[i]->pDiffuseTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool,
+            base_dir + normalizePath(diffuseTexturePath), m_pPhysicalDevice->get());
+        m_Materials[i]->pSpecularTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool,
+            base_dir + normalizePath(specularTexturePath), m_pPhysicalDevice->get());
+        m_Materials[i]->pAlphaTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool,
+            base_dir + normalizePath(alphaTexturePath), m_pPhysicalDevice->get());
     }
 
+    m_Vertices.clear();
+    m_Indices.clear();
+    m_Submeshes.clear();
+
     std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+    uint32_t globalIndexOffset = 0;
+
+    // Loop over shapes (meshes)
     for (const auto& shape : shapes)
     {
-        // Process faces (triangles)
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            // Get material ID for this face
+        size_t indexOffset = 0;
+        size_t numFaces = shape.mesh.num_face_vertices.size();
+
+		glm::vec3 bboxMin = { FLT_MAX, FLT_MAX, FLT_MAX };
+		glm::vec3 bboxMax = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+        // Map to store material to indices mapping for this shape
+        std::unordered_map<int, std::vector<uint32_t>> materialToIndices;
+
+        // Loop over faces
+        for (size_t f = 0; f < numFaces; f++)
+        {
+            int numFaceVertices = shape.mesh.num_face_vertices[f];
+            assert(numFaceVertices == 3);  // Only support triangles
             int materialId = shape.mesh.material_ids[f];
-            // Get corresponding texture index
-            uint32_t textureIndex = (materialId >= 0 && materialToTextureIndex.find(materialId) != materialToTextureIndex.end())
-                ? materialToTextureIndex[materialId]
-                : defaultTextureIndex;
 
-            // Process vertices for this face
-            size_t fv = size_t(shape.mesh.num_face_vertices[f]);
-            for (size_t v = 0; v < fv; v++) {
-                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
-
+            // Loop over vertices in the face
+            for (size_t v = 0; v < numFaceVertices; v++)
+            {
+                tinyobj::index_t idx = shape.mesh.indices[indexOffset + v];
                 Vertex vertex{};
+
                 vertex.pos = {
                     attrib.vertices[3 * idx.vertex_index + 0],
                     attrib.vertices[3 * idx.vertex_index + 1],
                     attrib.vertices[3 * idx.vertex_index + 2]
                 };
 
-                if (idx.texcoord_index >= 0) {
+                // Update bounding box
+                bboxMin = glm::min(bboxMin, vertex.pos);
+                bboxMax = glm::max(bboxMax, vertex.pos);
+
+                if (idx.texcoord_index >= 0)
+                {
                     vertex.texCoord = {
                         attrib.texcoords[2 * idx.texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * idx.texcoord_index + 1]
+                        1.0f - attrib.texcoords[2 * idx.texcoord_index + 1] // Flip V coordinate
                     };
                 }
-                else {
+                else
+                {
                     vertex.texCoord = { 0.0f, 0.0f };
                 }
 
-                vertex.color = { 1.0f, 1.0f, 1.0f };
-
-                // Assign the texture index to this vertex
-                vertex.texIndex = textureIndex;
-
-                if (uniqueVertices.count(vertex) == 0) {
+                // Check if vertex is already in uniqueVertices
+                if (uniqueVertices.count(vertex) == 0)
+                {
                     uniqueVertices[vertex] = static_cast<uint32_t>(m_Vertices.size());
                     m_Vertices.push_back(vertex);
                 }
-                m_Indices.push_back(uniqueVertices[vertex]);
+
+				
+
+                uint32_t index = uniqueVertices[vertex];
+                materialToIndices[materialId].push_back(index);
             }
-            index_offset += fv;
+            indexOffset += numFaceVertices;
+        }
+
+        // For each material used in this shape, create a submesh
+        for (const auto& pair : materialToIndices)
+        {
+            int materialId = pair.first;
+            const std::vector<uint32_t>& indices = pair.second;
+
+            Submesh submesh{};
+            submesh.indexStart = static_cast<uint32_t>(m_Indices.size());
+            submesh.indexCount = static_cast<uint32_t>(indices.size());
+            submesh.materialIndex = static_cast<uint32_t>(materialId);
+			submesh.bboxMin = bboxMin;
+			submesh.bboxMax = bboxMax;
+
+            m_Submeshes.push_back(submesh);
+            m_Indices.insert(m_Indices.end(), indices.begin(), indices.end());
         }
     }
-    spdlog::info("Model vertices and indices loaded: {} vertices, {} indices, {} textures",
-        m_Vertices.size(), m_Indices.size(), m_Textures.size());
+
+    spdlog::debug("Loaded model with {} vertices, {} indices, and {} materials.", m_Vertices.size(), m_Indices.size(), m_Materials.size());
 }
 
 void Model::createVertexBuffer() 
@@ -241,7 +257,7 @@ size_t Model::getIndexCount() const
 
 bool Vertex::operator==(const Vertex& other) const 
 {
-    return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    return pos == other.pos && texCoord == other.texCoord;
 }
 
 VkVertexInputBindingDescription Vertex::getBindingDescription() 
@@ -253,9 +269,9 @@ VkVertexInputBindingDescription Vertex::getBindingDescription()
     return bindingDescription;
 }
 
-std::vector<VkVertexInputAttributeDescription> Vertex::getAttributeDescriptions() 
+std::vector<VkVertexInputAttributeDescription> Vertex::getAttributeDescriptions()
 {
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(4);
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(2);
 
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
@@ -264,18 +280,8 @@ std::vector<VkVertexInputAttributeDescription> Vertex::getAttributeDescriptions(
 
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-    attributeDescriptions[2].binding = 0;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-    attributeDescriptions[3].binding = 0;
-    attributeDescriptions[3].location = 3;
-    attributeDescriptions[3].format = VK_FORMAT_R32_UINT;
-    attributeDescriptions[3].offset = offsetof(Vertex, texIndex);
+    attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[1].offset = offsetof(Vertex, texCoord);
 
     return attributeDescriptions;
 }

@@ -13,14 +13,12 @@
 #include "CommandPool.h"
 #include "Device.h"
 #include "Texture.h"
+#include "Material.h"
 
 struct Vertex 
 {
     glm::vec3 pos;
-    glm::vec3 color;
     glm::vec2 texCoord;
-    uint32_t texIndex;
-
 
     static VkVertexInputBindingDescription getBindingDescription();
     static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
@@ -39,13 +37,22 @@ namespace std
             hash<glm::vec2> vec2Hasher;
 
             seed ^= vec3Hasher(vertex.pos) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed ^= vec3Hasher(vertex.color) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             seed ^= vec2Hasher(vertex.texCoord) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 
             return seed;
         }
     };
 }
+
+struct Submesh
+{
+    uint32_t indexStart;
+    uint32_t indexCount;
+	uint16_t materialIndex;
+
+	glm::vec3 bboxMin;
+	glm::vec3 bboxMax;
+};
 
 class PhysicalDevice;
 class Model 
@@ -62,8 +69,8 @@ public:
     VkBuffer getIndexBuffer() const;
     size_t getIndexCount() const;
 
-	std::vector<Texture*> getTextures() const { return m_Textures; }
-
+	std::vector<Submesh> getSubmeshes() const { return m_Submeshes; }
+	std::vector<Material*> getMaterials() const { return m_Materials; }
 private:
     VmaAllocator m_Allocator;
     Device* m_pDevice;
@@ -77,5 +84,6 @@ private:
     Buffer* m_pVertexBuffer;
     Buffer* m_pIndexBuffer;
 
-    std::vector<Texture*> m_Textures;
+	std::vector<Submesh> m_Submeshes;
+	std::vector<Material*> m_Materials;
 };

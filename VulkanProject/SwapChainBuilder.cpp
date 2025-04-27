@@ -45,6 +45,11 @@ SwapChainBuilder& SwapChainBuilder::setPresentFamilyIndex(uint32_t index)
     m_PresentFamilyIndex = index;
     return *this;
 }
+SwapChainBuilder& SwapChainBuilder::setImageUsage(VkImageUsageFlags usage)
+{
+	m_ImageUsage = usage;
+	return *this;
+}
 
 SwapChain* SwapChainBuilder::build()
 {
@@ -88,7 +93,7 @@ SwapChain* SwapChainBuilder::build()
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = m_ImageUsage;
 
     uint32_t queueFamilyIndices[] = { m_GraphicsFamilyIndex, m_PresentFamilyIndex };
 
@@ -199,7 +204,7 @@ VkSurfaceFormatKHR SwapChainBuilder::chooseSwapSurfaceFormat(
 
     for (const auto& availableFormat : availableFormats)
     {
-        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
+        if (availableFormat.format == VK_FORMAT_R8G8B8A8_SRGB &&
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
         {
             return availableFormat;

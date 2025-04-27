@@ -1,13 +1,10 @@
 #version 450
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inColor;
-layout(location = 2) in vec2 inTexCoord;
-layout(location = 3) in uint inTexIndex; // New attribute at location 3
+layout(location = 1) in vec2 inTexCoord;
 
-layout(location = 0) out vec3 fragColor;
-layout(location = 1) out vec2 fragTexCoord;
-layout(location = 2) flat out int fragTexIndex;
+layout(location = 0) out vec2 fragTexCoord;
+layout(location = 1) out vec3 fragWorldPos; // Pass world position to fragment shader
 
 layout(binding = 0) uniform UBO {
     mat4 model;
@@ -16,8 +13,8 @@ layout(binding = 0) uniform UBO {
 } ubo;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
-    fragColor = inColor;
+    vec4 worldPosition = ubo.model * vec4(inPosition, 1.0); // Calculate world position
+    gl_Position = ubo.proj * ubo.view * worldPosition;
     fragTexCoord = inTexCoord;
-    fragTexIndex = int(inTexIndex); // Pass the texture index to the fragment shader
+    fragWorldPos = worldPosition.xyz; // Pass world position
 }

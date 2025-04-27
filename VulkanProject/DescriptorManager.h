@@ -1,24 +1,24 @@
+// DescriptorManager.h
 #pragma once
-
 #include <vulkan/vulkan.h>
 #include <vector>
+#include "Material.h"
 
-class Texture;
 class DescriptorManager
 {
 public:
-    DescriptorManager(VkDevice device, size_t maxFramesInFlight, size_t textureCount);
+    DescriptorManager(VkDevice device, size_t maxFramesInFlight, size_t materialCount);
     ~DescriptorManager();
 
     void createDescriptorSetLayout();
     void createDescriptorPool();
     void createDescriptorSets(
         const std::vector<VkBuffer>& uniformBuffers,
-        const std::vector<Texture*>& textures,
+        const std::vector<Material*>& materials,
         size_t uniformBufferObjectSize
     );
 
-	void SetTextureCount(size_t textureCount);
+    void setMaterialCount(size_t materialCount);
 
     VkDescriptorSetLayout getDescriptorSetLayout() const;
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
@@ -26,7 +26,7 @@ public:
 private:
     VkDevice m_Device;
     size_t m_MaxFramesInFlight;
-    size_t m_TextureCount; // New member variable to store texture count
+    size_t m_MaterialCount; // Updated to store material count
 
     VkDescriptorSetLayout m_DescriptorSetLayout{};
     VkDescriptorPool m_DescriptorPool{};

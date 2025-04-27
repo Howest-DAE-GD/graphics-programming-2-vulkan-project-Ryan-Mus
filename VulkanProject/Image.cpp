@@ -99,6 +99,13 @@ void Image::transitionImageLayout(CommandPool* commandPool, VkQueue graphicsQueu
         srcAccessMask = 0;
         dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     }
+    else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    {
+		srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		srcAccessMask = 0;
+		dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+	}
     else {
         throw std::invalid_argument("unsupported layout transition!");
     }

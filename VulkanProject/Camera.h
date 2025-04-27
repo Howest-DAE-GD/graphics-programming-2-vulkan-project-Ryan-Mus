@@ -11,6 +11,7 @@ public:
     glm::mat4 getViewMatrix();
 
     void update(float deltaTime);
+	glm::vec3 getPosition() const { return m_Position; }
 
 private:
     void processKeyboard(float deltaTime);

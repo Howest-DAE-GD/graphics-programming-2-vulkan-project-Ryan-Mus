@@ -17,12 +17,7 @@
 
 #include <spdlog/spdlog.h>
 
-struct UniformBufferObject
-{
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
-};
+#include "Frustum.h"
 
 Renderer::Renderer(Window* window)
     : m_pWindow(window) 
@@ -75,6 +70,7 @@ void Renderer::initVulkan()
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
 		.addRequiredExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
+		.addRequiredExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME)
         .setRequiredDeviceFeatures(deviceFeatures)
 		.setVulkan11Features(vulkan11Features)
 		.setVulkan12Features(vulkan12Features)
@@ -101,6 +97,7 @@ void Renderer::initVulkan()
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
 		.addRequiredExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
+		.addRequiredExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME)
         .setEnabledFeatures(m_pPhysicalDevice->getFeatures())
 		.setVulkan11Features(m_pPhysicalDevice->getVulkan11Features())
 		.setVulkan12Features(m_pPhysicalDevice->getVulkan12Features())
@@ -116,21 +113,22 @@ void Renderer::initVulkan()
         .setHeight(m_pWindow->getHeight())
         .setGraphicsFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value())
         .setPresentFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().presentFamily.value())
+        .setImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT) // Add VK_IMAGE_USAGE_TRANSFER_DST_BIT
         .build();
 
+
     //m_pRenderPass = new RenderPass(m_pDevice->get(), m_pSwapChain->getImageFormat(), findDepthFormat());
-
-    m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT,0);
-    m_pDescriptorManager->createDescriptorSetLayout();
-
+    createVmaAllocator();
     m_pCommandPool = new CommandPool(m_pDevice->get(), m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value());
 
-    createVmaAllocator();
-    createDepthResources();
-    //createFramebuffers();
+	createGBuffer();
 
-    m_pModel = new Model(m_VmaAllocator, m_pDevice,m_pPhysicalDevice, m_pCommandPool, MODEL_PATH_);
+    m_pModel = new Model(m_VmaAllocator, m_pDevice, m_pPhysicalDevice, m_pCommandPool, MODEL_PATH_);
     m_pModel->loadModel();
+
+    size_t materialCount = m_pModel->getMaterials().size();
+    m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT, materialCount);
+
     m_pModel->createVertexBuffer();
     m_pModel->createIndexBuffer();
 
@@ -142,16 +140,14 @@ void Renderer::initVulkan()
         uniformBufferHandles.push_back(buffer->get());
     }
 
-    // Get textures from the Model
-    std::vector<Texture*> textures = m_pModel->getTextures();
+    // Get materials from the Model
+    const std::vector<Material*>& materials = m_pModel->getMaterials();
 
-	m_pDescriptorManager->SetTextureCount(textures.size());
-    // Collect image infos for the textures
-    std::vector<VkDescriptorImageInfo> imageInfos;
- 
-    // Create descriptor sets
     m_pDescriptorManager->createDescriptorSets(
-        uniformBufferHandles, textures, sizeof(UniformBufferObject));
+        uniformBufferHandles,
+        materials,
+        sizeof(UniformBufferObject)
+    );
 
     createCommandBuffers();
 
@@ -159,12 +155,24 @@ void Renderer::initVulkan()
         .setDevice(m_pDevice->get())
         .setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
         .setSwapChainExtent(m_pSwapChain->getExtent())
-        .setColorFormat(m_pSwapChain->getImageFormat())
+        .setColorFormats({ VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM }) // Multiple color formats
         .setDepthFormat(findDepthFormat())
         .setVertexInputBindingDescription(Vertex::getBindingDescription())
         .setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
-        .setShaderPaths("shaders/vert.spv", "shaders/frag.spv")
+        .setShaderPaths("shaders/shader.vert.spv", "shaders/shader.frag.spv")
+		.setAttachmentCount(2)
         .build();
+
+	/*m_pGBufferPipeline = GraphicsPipelineBuilder()
+		.setDevice(m_pDevice->get())
+		.setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
+		.setSwapChainExtent(m_pSwapChain->getExtent())
+		.setColorFormat(m_pSwapChain->getImageFormat())
+		.setDepthFormat(findDepthFormat())
+		.setVertexInputBindingDescription(Vertex::getBindingDescription())
+		.setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
+		.setShaderPaths("shaders/gbuffer.vert.spv", "shaders/gbuffer.frag.spv")
+		.build();*/
 
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
 }
@@ -176,28 +184,6 @@ void Renderer::createVmaAllocator()
     allocatorInfo.device = m_pDevice->get();
     allocatorInfo.instance = m_pInstance->getInstance();
     vmaCreateAllocator(&allocatorInfo, &m_VmaAllocator);
-}
-
-void Renderer::createDepthResources() 
-{
-    VkFormat depthFormat = findDepthFormat();
-    m_pDepthImage = new Image(m_pDevice, m_VmaAllocator);
-    m_pDepthImage->createImage(
-        m_pSwapChain->getExtent().width,
-        m_pSwapChain->getExtent().height,
-        depthFormat,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
-
-    m_DepthImageView = m_pDepthImage->createImageView(depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    m_pDepthImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        depthFormat,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
 VkFormat Renderer::findDepthFormat() 
@@ -288,6 +274,7 @@ void Renderer::createCommandBuffers()
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
     // Begin command buffer
+        // Begin command buffer
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -295,24 +282,51 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
-    // Manually transition swapchain image layout to COLOR_ATTACHMENT_OPTIMAL
-    transitionImageLayout(commandBuffer, m_pSwapChain->getImages()[imageIndex],
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_NONE, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    // Transition the diffuse attachment to TRANSFER_SRC_OPTIMAL
+    transitionImageLayout(
+        commandBuffer,
+        m_GBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT
+    );
 
-    // Begin dynamic rendering
-    VkRenderingAttachmentInfo colorAttachment{};
-    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    colorAttachment.imageView = m_pSwapChain->getImageViews()[imageIndex];
-    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.clearValue.color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+    // Transition the swapchain image to TRANSFER_DST_OPTIMAL
+    transitionImageLayout(
+        commandBuffer,
+        m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_NONE,
+        VK_ACCESS_TRANSFER_WRITE_BIT
+    );
+
+    VkRenderingAttachmentInfo colorAttachments[2]{};
+
+    // Diffuse attachment
+    colorAttachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachments[0].imageView = m_GBuffer.diffuseImageView;
+    colorAttachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachments[0].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } }; // Clear color for diffuse attachment
+
+    // Specular attachment
+    colorAttachments[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachments[1].imageView = m_GBuffer.specularImageView;
+    colorAttachments[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachments[1].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } }; // Clear color for specular attachment
 
     VkRenderingAttachmentInfo depthAttachment{};
     depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    depthAttachment.imageView = m_DepthImageView;
+    depthAttachment.imageView = m_GBuffer.depthImageView;
     depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -323,59 +337,135 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     renderingInfo.renderArea.offset = { 0, 0 };
     renderingInfo.renderArea.extent = m_pSwapChain->getExtent();
     renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.colorAttachmentCount = 2;
+    renderingInfo.pColorAttachments = colorAttachments;
     renderingInfo.pDepthAttachment = &depthAttachment;
+
 
     vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pGraphicsPipeline->get());
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pGraphicsPipeline->get());
 
-        // Bind vertex and index buffers from the model
-        VkBuffer vertexBuffers[] = { m_pModel->getVertexBuffer() };
-        VkDeviceSize offsets[] = { 0 };
+    // Bind vertex and index buffers from the model
+    VkBuffer vertexBuffers[] = { m_pModel->getVertexBuffer() };
+    VkDeviceSize offsets[] = { 0 };
 
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindIndexBuffer(commandBuffer, m_pModel->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    vkCmdBindIndexBuffer(commandBuffer, m_pModel->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(m_pSwapChain->getExtent().width);
-        viewport.height = static_cast<float>(m_pSwapChain->getExtent().height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(m_pSwapChain->getExtent().width);
+    viewport.height = static_cast<float>(m_pSwapChain->getExtent().height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = m_pSwapChain->getExtent();
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    VkRect2D scissor{};
+    scissor.offset = { 0, 0 };
+    scissor.extent = m_pSwapChain->getExtent();
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+    Frustum frustum{ m_UniformBufferObject.proj,m_UniformBufferObject.view };
+
+    // Loop over submeshes and draw each one
+    const auto& submeshes = m_pModel->getSubmeshes();
+    for (const auto& submesh : submeshes)
+    {
+        // Transform the bounding box by the model matrix if necessary
+        glm::vec3 transformedMin = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMin, 1.0f));
+        glm::vec3 transformedMax = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMax, 1.0f));
+
+        // Perform frustum culling
+        if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
+            continue; // Skip this submesh
+        }
+        // Calculate descriptor set index
+        uint32_t descriptorSetIndex = m_currentFrame * m_pModel->getMaterials().size() + submesh.materialIndex;
+
+        // Bind the descriptor set for the current material and frame
         vkCmdBindDescriptorSets(
             commandBuffer,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             m_pGraphicsPipeline->getPipelineLayout(),
             0,
             1,
-            &m_pDescriptorManager->getDescriptorSets()[m_currentFrame],
+            &m_pDescriptorManager->getDescriptorSets()[descriptorSetIndex],
             0,
-            nullptr);
-        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(m_pModel->getIndexCount()), 1, 0, 0, 0);
+            nullptr
+        );
+
+        // Draw the submesh
+        vkCmdDrawIndexed(
+            commandBuffer,
+            submesh.indexCount,     // Number of indices in the submesh
+            1,                      // Instance count
+            submesh.indexStart,    // First index
+            0,                      // Vertex offset
+            0                       // First instance
+        );
+    }
 
     vkCmdEndRendering(commandBuffer);
 
-    // Transition swapchain image layout to PRESENT_SRC_KHR for presentation
-    transitionImageLayout(commandBuffer, m_pSwapChain->getImages()[imageIndex],
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_NONE,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_NONE);
+    // Copy the diffuse attachment to the swapchain image
+    VkImageCopy copyRegion{};
+    copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copyRegion.srcSubresource.mipLevel = 0;
+    copyRegion.srcSubresource.baseArrayLayer = 0;
+    copyRegion.srcSubresource.layerCount = 1;
+    copyRegion.srcOffset = { 0, 0, 0 };
 
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) 
-    {
+    copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copyRegion.dstSubresource.mipLevel = 0;
+    copyRegion.dstSubresource.baseArrayLayer = 0;
+    copyRegion.dstSubresource.layerCount = 1;
+    copyRegion.dstOffset = { 0, 0, 0 };
+
+    copyRegion.extent.width = m_pSwapChain->getExtent().width;
+    copyRegion.extent.height = m_pSwapChain->getExtent().height;
+    copyRegion.extent.depth = 1;
+
+    vkCmdCopyImage(
+        commandBuffer,
+        m_GBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &copyRegion
+    );
+
+    // Transition the diffuse attachment back to COLOR_ATTACHMENT_OPTIMAL
+    transitionImageLayout(
+        commandBuffer,
+        m_GBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+    );
+
+    // Transition the swapchain image to PRESENT_SRC_KHR
+    transitionImageLayout(
+        commandBuffer,
+        m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_ACCESS_NONE
+    );
+
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
     }
 }
+
 
 
 void Renderer::drawFrame()
@@ -487,25 +577,28 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     // Create or update the camera
     static Camera camera(m_pWindow->getGLFWwindow(),
         glm::vec3(0.0f, 0.0f, 3.0f), // Camera position
-        glm::vec3(0.0f, 1.0f, 0.0f), // World up vector (Z-up)
+        glm::vec3(0.0f, 1.0f, 0.0f), // World up vector (Y-up)
         0.0f, 0.0f);               // Initial yaw and pitch
-
 
     camera.update(deltaTime);
 
-    UniformBufferObject ubo{};
-    ubo.model = glm::mat4(1.0f);
-    ubo.view = camera.getViewMatrix();
-    ubo.proj = glm::perspective(
+    m_UniformBufferObject.model = glm::mat4(1.0f);
+    m_UniformBufferObject.view = camera.getViewMatrix();
+    m_UniformBufferObject.proj = glm::perspective(
         glm::radians(45.0f),
         m_pSwapChain->getExtent().width / (float)m_pSwapChain->getExtent().height,
         0.1f,
         10000.0f);
-    ubo.proj[1][1] *= -1;
+    m_UniformBufferObject.proj[1][1] *= -1;
 
+    // Set the camera position
+    m_UniformBufferObject.cameraPosition = camera.getPosition(); // Assuming Camera has a getPosition() method
+
+    // Map the uniform buffer and copy the data
     void* data = m_pUniformBuffers[currentImage]->map();
-    memcpy(data, &ubo, sizeof(ubo));
+    memcpy(data, &m_UniformBufferObject, sizeof(m_UniformBufferObject));
 }
+
 
 
 void Renderer::recreateSwapChain() 
@@ -531,7 +624,8 @@ void Renderer::recreateSwapChain()
         .setPresentFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().presentFamily.value())
         .build();
 
-    createDepthResources();
+	createGBuffer();
+    //createDepthResources();
     //createFramebuffers();
 }
 
@@ -567,11 +661,78 @@ void Renderer::transitionImageLayout(
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
+void Renderer::createGBuffer()
+{
+    // Create diffuse image
+	m_GBuffer.pDiffuseImage = new Image(m_pDevice, m_VmaAllocator);
+    m_GBuffer.pDiffuseImage->createImage(
+       m_pSwapChain->getExtent().width,
+       m_pSwapChain->getExtent().height,
+       VK_FORMAT_R8G8B8A8_SRGB, // Use linear format for intermediate rendering
+       VK_IMAGE_TILING_OPTIMAL,
+       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+       VMA_MEMORY_USAGE_GPU_ONLY
+   );
+
+    m_GBuffer.pDiffuseImage->transitionImageLayout(
+        m_pCommandPool,
+        m_pDevice->getGraphicsQueue(),
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    );
+
+    m_GBuffer.diffuseImageView = m_GBuffer.pDiffuseImage->createImageView(VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);   
+
+    // Create specular image
+    m_GBuffer.pSpecularImage = new Image(m_pDevice, m_VmaAllocator);
+    m_GBuffer.pSpecularImage->createImage(
+        m_pSwapChain->getExtent().width,
+        m_pSwapChain->getExtent().height,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY
+    );
+
+    m_GBuffer.specularImageView = m_GBuffer.pSpecularImage->createImageView(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Create depth image
+    VkFormat depthFormat = findDepthFormat();
+    m_GBuffer.pDepthImage = new Image(m_pDevice, m_VmaAllocator);
+    m_GBuffer.pDepthImage->createImage(
+        m_pSwapChain->getExtent().width,
+        m_pSwapChain->getExtent().height,
+        depthFormat,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY
+    );
+
+    m_GBuffer.depthImageView = m_GBuffer.pDepthImage->createImageView(depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    // Transition the depth image layout
+    m_GBuffer.pDepthImage->transitionImageLayout(
+        m_pCommandPool,
+        m_pDevice->getGraphicsQueue(),
+        depthFormat,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    );
+}
+
+
 
 void Renderer::cleanupSwapChain() 
 {
-    vkDestroyImageView(m_pDevice->get(), m_DepthImageView, nullptr);
-    delete m_pDepthImage;
+    vkDestroyImageView(m_pDevice->get(), m_GBuffer.depthImageView, nullptr);
+    delete m_GBuffer.pDepthImage;
+
+	vkDestroyImageView(m_pDevice->get(), m_GBuffer.diffuseImageView, nullptr);
+	delete m_GBuffer.pDiffuseImage;
+	
+    vkDestroyImageView(m_pDevice->get(), m_GBuffer.specularImageView, nullptr);
+	delete m_GBuffer.pSpecularImage;
 
     /*for (auto framebuffer : m_SwapChainFramebuffers) {
         vkDestroyFramebuffer(m_pDevice->get(), framebuffer, nullptr);
@@ -584,17 +745,17 @@ void Renderer::cleanup()
 {
     cleanupSwapChain();
 
+
     for (auto& uniformBuffer : m_pUniformBuffers) {
         delete uniformBuffer;
     }
 
     delete m_pDescriptorManager;
     delete m_pModel;
-    //delete m_pTexture;
+  
     vmaDestroyAllocator(m_VmaAllocator);
 
     delete m_pGraphicsPipeline;
-    //delete m_pRenderPass;
     delete m_pSyncObjects;
     delete m_pCommandPool;
     delete m_pDevice;

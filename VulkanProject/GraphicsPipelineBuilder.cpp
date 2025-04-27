@@ -49,58 +49,55 @@ namespace
 
 }  
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDevice(VkDevice device) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDevice(VkDevice device) {
     m_Device = device;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setRenderPass(VkRenderPass renderPass) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setRenderPass(VkRenderPass renderPass) {
     m_RenderPass = renderPass;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDescriptorSetLayout(VkDescriptorSetLayout descriptorSetLayout) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDescriptorSetLayout(VkDescriptorSetLayout descriptorSetLayout) {
     m_DescriptorSetLayout = descriptorSetLayout;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setSwapChainExtent(VkExtent2D extent) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setSwapChainExtent(VkExtent2D extent) {
     m_SwapChainExtent = extent;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setVertexInputBindingDescription(const VkVertexInputBindingDescription& bindingDescription) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setVertexInputBindingDescription(const VkVertexInputBindingDescription& bindingDescription) {
     m_BindingDescription = bindingDescription;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setVertexInputAttributeDescriptions(const std::vector<VkVertexInputAttributeDescription>& attributeDescriptions) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setVertexInputAttributeDescriptions(const std::vector<VkVertexInputAttributeDescription>& attributeDescriptions) {
     m_AttributeDescriptions = attributeDescriptions;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setShaderPaths(const std::string& vertShaderPath, const std::string& fragShaderPath) 
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setShaderPaths(const std::string& vertShaderPath, const std::string& fragShaderPath) {
     m_VertShaderPath = vertShaderPath;
     m_FragShaderPath = fragShaderPath;
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setColorFormat(VkFormat colorFormat)
-{
-    m_ColorFormat = colorFormat;
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setColorFormats(const std::vector<VkFormat>& colorFormats) {
+    m_ColorFormats = colorFormats;
+    m_AttachmentCount = static_cast<uint16_t>(colorFormats.size());
     return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthFormat(VkFormat depthFormat)
-{
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthFormat(VkFormat depthFormat) {
     m_DepthFormat = depthFormat;
+    return *this;
+}
+
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setAttachmentCount(uint16_t attachmentCount) {
+    m_AttachmentCount = attachmentCount;
     return *this;
 }
 
@@ -191,19 +188,23 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     depthStencil.stencilTestEnable = VK_FALSE;
 
     // Color blend state
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask =
+    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments(m_AttachmentCount);
+    VkPipelineColorBlendAttachmentState defaultColorBlendAttachment{};
+    defaultColorBlendAttachment.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE; // Disable blending
+    defaultColorBlendAttachment.blendEnable = VK_FALSE; // Disable blending
 
-    // No need to set src/dst blend factors and operations since blending is disabled
+    // Ensure all attachments are identical
+    for (auto& attachment : colorBlendAttachments) {
+        attachment = defaultColorBlendAttachment;
+    }
 
     VkPipelineColorBlendStateCreateInfo colorBlending{};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
+    colorBlending.pAttachments = colorBlendAttachments.data();
 
     // Dynamic states
     std::vector<VkDynamicState> dynamicStates =
@@ -234,17 +235,18 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     }
 
     // Pipeline Rendering
-    VkPipelineRenderingCreateInfo pipelineRenderingInfo{};
-    pipelineRenderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    pipelineRenderingInfo.colorAttachmentCount = 1;
-    pipelineRenderingInfo.pColorAttachmentFormats = &m_ColorFormat;
-    pipelineRenderingInfo.depthAttachmentFormat = m_DepthFormat;
-    pipelineRenderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED; // No stencil
+    VkPipelineRenderingCreateInfo renderingCreateInfo{};
+    renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    renderingCreateInfo.colorAttachmentCount = static_cast<uint32_t>(m_ColorFormats.size());
+    renderingCreateInfo.pColorAttachmentFormats = m_ColorFormats.data();
+    renderingCreateInfo.depthAttachmentFormat = m_DepthFormat;
+    renderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
 
     // Graphics pipeline
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.pNext = &pipelineRenderingInfo; // Attach rendering info
+    pipelineInfo.pNext = &renderingCreateInfo; // Attach rendering info
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.pVertexInputState = &vertexInputInfo;

@@ -97,7 +97,10 @@ add_executable(VulkanProject
  "Image.h" "Image.cpp"
  "Model.h" "Model.cpp"
  "Texture.h" "Texture.cpp"
- "Renderer.h" "Renderer.cpp" "Camera.h" "Camera.cpp")
+ "Renderer.h" "Renderer.cpp"
+ "Camera.h" "Camera.cpp"
+ "Material.h" "Material.cpp"
+ "Frustum.h" "Frustum.cpp")
 
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 
@@ -123,18 +126,28 @@ set(SHADER_DIR "${CMAKE_SOURCE_DIR}/shaders")
 set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
 
-add_custom_command(
-    OUTPUT ${SHADER_OUT_DIR}/vert.spv ${SHADER_OUT_DIR}/frag.spv
-    COMMAND C:/VulkanSDK/1.3.296.0/Bin/glslc.exe ${SHADER_DIR}/shader.vert -o ${SHADER_OUT_DIR}/vert.spv
-    COMMAND C:/VulkanSDK/1.3.296.0/Bin/glslc.exe ${SHADER_DIR}/shader.frag -o ${SHADER_OUT_DIR}/frag.spv
-    COMMENT "Compiling shaders..."
-    VERBATIM
-)
+# Find all .vert and .frag files in the shader directory
+file(GLOB SHADER_FILES "${SHADER_DIR}/*.vert" "${SHADER_DIR}/*.frag")
 
-add_custom_target(CompileShaders DEPENDS ${SHADER_OUT_DIR}/vert.spv ${SHADER_OUT_DIR}/frag.spv)
+# Generate output paths for compiled shaders
+set(COMPILED_SHADERS "")
+foreach(SHADER ${SHADER_FILES})
+    get_filename_component(SHADER_NAME ${SHADER} NAME)
+    set(COMPILED_SHADER "${SHADER_OUT_DIR}/${SHADER_NAME}.spv")
+    list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
+    add_custom_command(
+        OUTPUT ${COMPILED_SHADER}
+        COMMAND C:/VulkanSDK/1.3.296.0/Bin/glslc.exe ${SHADER} -o ${COMPILED_SHADER}
+        COMMENT "Compiling shader ${SHADER}..."
+        VERBATIM
+    )
+endforeach()
+
+add_custom_target(CompileShaders DEPENDS ${COMPILED_SHADERS})
 
 # Ensure shaders are compiled before building the project
 add_dependencies(VulkanProject CompileShaders)
+
 
 # Copy .spv files to build directory
 file(GLOB SPV_SHADERS "${SHADER_OUT_DIR}/*.spv")
