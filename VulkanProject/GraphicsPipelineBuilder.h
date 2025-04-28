@@ -19,6 +19,10 @@ public:
     GraphicsPipelineBuilder& setColorFormats(const std::vector<VkFormat>& colorFormats); // Updated to support multiple formats
     GraphicsPipelineBuilder& setDepthFormat(VkFormat depthFormat);
     GraphicsPipelineBuilder& setAttachmentCount(uint16_t attachmentCount);
+	GraphicsPipelineBuilder& enableDepthTest(bool enable);
+	GraphicsPipelineBuilder& enableDepthWrite(bool enable);
+	GraphicsPipelineBuilder& setDepthCompareOp(VkCompareOp compareOp);
+	GraphicsPipelineBuilder& setRasterizationState(VkCullModeFlags cullMode);
 
     GraphicsPipeline* build();
 
@@ -34,5 +38,9 @@ private:
     std::vector<VkFormat> m_ColorFormats{}; // Store multiple color formats
     VkFormat m_DepthFormat{ VK_FORMAT_UNDEFINED };
     uint16_t m_AttachmentCount{ 0 };
+	bool m_DepthTestEnabled{ false };
+	bool m_DepthWriteEnabled{ false };
+	VkCompareOp m_DepthCompareOp{ VK_COMPARE_OP_LESS };
+	VkCullModeFlags m_CullMode{ VK_CULL_MODE_BACK_BIT };
 };
 

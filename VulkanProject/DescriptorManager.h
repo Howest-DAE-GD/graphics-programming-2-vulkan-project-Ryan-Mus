@@ -18,17 +18,23 @@ public:
         size_t uniformBufferObjectSize
     );
 
-    void setMaterialCount(size_t materialCount);
+    // New methods for the final pass
+    void createFinalPassDescriptorSetLayout();
+    void createFinalPassDescriptorSet(VkImageView diffuseImageView, VkImageView specularImageView, VkSampler sampler);
 
     VkDescriptorSetLayout getDescriptorSetLayout() const;
+    VkDescriptorSetLayout getFinalPassDescriptorSetLayout() const; // New getter
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
+    const VkDescriptorSet& getFinalPassDescriptorSet() const; // New getter
 
 private:
     VkDevice m_Device;
     size_t m_MaxFramesInFlight;
-    size_t m_MaterialCount; // Updated to store material count
+    size_t m_MaterialCount;
 
     VkDescriptorSetLayout m_DescriptorSetLayout{};
+    VkDescriptorSetLayout m_FinalPassDescriptorSetLayout{}; // New member
     VkDescriptorPool m_DescriptorPool{};
     std::vector<VkDescriptorSet> m_DescriptorSets{};
+    VkDescriptorSet m_FinalPassDescriptorSet{}; // New member
 };

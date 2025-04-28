@@ -101,6 +101,28 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::setAttachmentCount(uint16_t at
     return *this;
 }
 
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::enableDepthTest(bool enable) {
+	m_DepthTestEnabled = enable;
+	return *this;
+}
+
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::enableDepthWrite(bool enable) {
+	m_DepthWriteEnabled = enable;
+	return *this;
+}
+
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthCompareOp(VkCompareOp compareOp)
+{
+	m_DepthCompareOp = compareOp;
+	return *this;
+}
+
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setRasterizationState(VkCullModeFlags cullMode)
+{
+	m_CullMode = cullMode;
+	return *this;
+}
+
 GraphicsPipeline* GraphicsPipelineBuilder::build() 
 {
 	spdlog::debug("Building graphics pipeline with vertex shader: {} and fragment shader: {}", m_VertShaderPath, m_FragShaderPath);
@@ -168,7 +190,7 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = m_CullMode;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -181,9 +203,9 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     // Depth and stencil state
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthTestEnable = m_DepthTestEnabled;
+    depthStencil.depthWriteEnable = m_DepthWriteEnabled;
+    depthStencil.depthCompareOp = m_DepthCompareOp;
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.stencilTestEnable = VK_FALSE;
 

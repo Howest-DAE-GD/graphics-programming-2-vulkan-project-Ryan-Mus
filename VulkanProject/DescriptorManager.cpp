@@ -7,8 +7,8 @@
 DescriptorManager::DescriptorManager(VkDevice device, size_t maxFramesInFlight, size_t materialCount)
     : m_Device(device), m_MaxFramesInFlight(maxFramesInFlight), m_MaterialCount(materialCount)
 {
-    createDescriptorSetLayout();
-    createDescriptorPool();
+    //createDescriptorSetLayout();
+    //createDescriptorPool();
     spdlog::debug("DescriptorManager created.");
 }
 
@@ -18,6 +18,12 @@ DescriptorManager::~DescriptorManager()
     {
         vkDestroyDescriptorSetLayout(m_Device, m_DescriptorSetLayout, nullptr);
     }
+ 
+	if (m_FinalPassDescriptorSetLayout != VK_NULL_HANDLE)
+	{
+		vkDestroyDescriptorSetLayout(m_Device, m_FinalPassDescriptorSetLayout, nullptr);
+	}
+
     if (m_DescriptorPool != VK_NULL_HANDLE)
     {
         vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
@@ -85,33 +91,29 @@ void DescriptorManager::createDescriptorSetLayout()
 
 void DescriptorManager::createDescriptorPool()
 {
-    if (m_DescriptorPool != VK_NULL_HANDLE)
-    {
-        vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
-    }
+    std::vector<VkDescriptorPoolSize> poolSizes = {
+        // For uniform buffers
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount) },
 
-    std::array<VkDescriptorPoolSize, 4> poolSizes{};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount);
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Diffuse
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount);
-    poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Specular
-    poolSizes[2].descriptorCount = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount);
-    poolSizes[3].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; // Alpha
-    poolSizes[3].descriptorCount = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount);
+        // For combined image samplers used in the main pass
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount * 3) },
+
+        // For combined image samplers used in the final pass
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 } // Diffuse and specular
+    };
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount);
+    poolInfo.maxSets = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount + 1); // +1 for the final pass
 
     if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescriptorPool) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to create descriptor pool!");
     }
-    spdlog::debug("Descriptor pool created.");
 }
+
 
 void DescriptorManager::createDescriptorSets(
     const std::vector<VkBuffer>& uniformBuffers,
@@ -214,12 +216,6 @@ void DescriptorManager::createDescriptorSets(
     }
 }
 
-void DescriptorManager::setMaterialCount(size_t materialCount)
-{
-    m_MaterialCount = materialCount;
-    createDescriptorSetLayout();
-    createDescriptorPool();
-}
 
 VkDescriptorSetLayout DescriptorManager::getDescriptorSetLayout() const
 {
@@ -230,3 +226,89 @@ const std::vector<VkDescriptorSet>& DescriptorManager::getDescriptorSets() const
 {
     return m_DescriptorSets;
 }
+
+void DescriptorManager::createFinalPassDescriptorSetLayout()
+{
+    // Binding for diffuse sampler (binding = 0)
+    VkDescriptorSetLayoutBinding diffuseBinding{};
+    diffuseBinding.binding = 0;
+    diffuseBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    diffuseBinding.descriptorCount = 1;
+    diffuseBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    diffuseBinding.pImmutableSamplers = nullptr;
+
+    // Binding for specular sampler (binding = 1)
+    VkDescriptorSetLayoutBinding specularBinding{};
+    specularBinding.binding = 1;
+    specularBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    specularBinding.descriptorCount = 1;
+    specularBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    specularBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings = { diffuseBinding, specularBinding };
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
+
+    if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_FinalPassDescriptorSetLayout) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create descriptor set layout for the final pass!");
+    }
+}
+
+VkDescriptorSetLayout DescriptorManager::getFinalPassDescriptorSetLayout() const
+{
+    return m_FinalPassDescriptorSetLayout;
+}
+
+void DescriptorManager::createFinalPassDescriptorSet(VkImageView diffuseImageView, VkImageView specularImageView, VkSampler sampler)
+{
+    // Allocate the descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = m_DescriptorPool; // Ensure the pool can allocate the required descriptors
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &m_FinalPassDescriptorSetLayout;
+
+    if (vkAllocateDescriptorSets(m_Device, &allocInfo, &m_FinalPassDescriptorSet) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to allocate descriptor set for the final pass!");
+    }
+
+    // Update the descriptor set with the G-Buffer images
+    VkDescriptorImageInfo diffuseImageInfo{};
+    diffuseImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    diffuseImageInfo.imageView = diffuseImageView;
+    diffuseImageInfo.sampler = sampler;
+
+    VkDescriptorImageInfo specularImageInfo{};
+    specularImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    specularImageInfo.imageView = specularImageView;
+    specularImageInfo.sampler = sampler;
+
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = m_FinalPassDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pImageInfo = &diffuseImageInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = m_FinalPassDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pImageInfo = &specularImageInfo;
+
+    vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+}
+
+const VkDescriptorSet& DescriptorManager::getFinalPassDescriptorSet() const
+{
+    return m_FinalPassDescriptorSet;
+}
+

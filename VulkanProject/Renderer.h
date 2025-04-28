@@ -63,7 +63,8 @@ private:
         VkPipelineStageFlags2 srcStageMask,
         VkPipelineStageFlags2 dstStageMask,
         VkAccessFlags2 srcAccessMask,
-        VkAccessFlags2 dstAccessMask);
+        VkAccessFlags2 dstAccessMask,
+		VkImageAspectFlags aspectMask);
 
     struct UniformBufferObject
     {
@@ -96,7 +97,8 @@ private:
     //RenderPass* m_pRenderPass;
     DescriptorManager* m_pDescriptorManager;
     GraphicsPipeline* m_pGraphicsPipeline;
-	GraphicsPipeline* m_pGBufferPipeline;
+	GraphicsPipeline* m_pDepthPipeline;
+	GraphicsPipeline* m_pFinalPipeline;
     CommandPool* m_pCommandPool;
     SynchronizationObjects* m_pSyncObjects;
 

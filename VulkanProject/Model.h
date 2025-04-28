@@ -23,6 +23,7 @@ struct Vertex
 
     static VkVertexInputBindingDescription getBindingDescription();
     static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
+    static std::vector<VkVertexInputAttributeDescription> getDepthAttributeDescriptions();
 
     bool operator==(const Vertex& other) const;
 };

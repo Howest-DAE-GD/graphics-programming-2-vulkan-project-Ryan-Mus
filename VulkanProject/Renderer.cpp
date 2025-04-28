@@ -129,6 +129,11 @@ void Renderer::initVulkan()
     size_t materialCount = m_pModel->getMaterials().size();
     m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT, materialCount);
 
+    // Create descriptor set layouts and pools
+    m_pDescriptorManager->createDescriptorPool();
+    m_pDescriptorManager->createDescriptorSetLayout();
+    m_pDescriptorManager->createFinalPassDescriptorSetLayout(); // New
+
     m_pModel->createVertexBuffer();
     m_pModel->createIndexBuffer();
 
@@ -143,10 +148,18 @@ void Renderer::initVulkan()
     // Get materials from the Model
     const std::vector<Material*>& materials = m_pModel->getMaterials();
 
+    // Create descriptor sets for the main pass
     m_pDescriptorManager->createDescriptorSets(
         uniformBufferHandles,
         materials,
         sizeof(UniformBufferObject)
+    );
+
+    // Create descriptor set for the final pass
+    m_pDescriptorManager->createFinalPassDescriptorSet(
+        m_GBuffer.diffuseImageView,
+        m_GBuffer.specularImageView,
+        Texture::getTextureSampler() // Ensure this sampler is created
     );
 
     createCommandBuffers();
@@ -161,18 +174,42 @@ void Renderer::initVulkan()
         .setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
         .setShaderPaths("shaders/shader.vert.spv", "shaders/shader.frag.spv")
 		.setAttachmentCount(2)
+		.enableDepthTest(true)
+		.enableDepthWrite(false)
+		.setDepthCompareOp(VK_COMPARE_OP_EQUAL)
         .build();
 
-	/*m_pGBufferPipeline = GraphicsPipelineBuilder()
-		.setDevice(m_pDevice->get())
+	m_pDepthPipeline = GraphicsPipelineBuilder()
+        .setDevice(m_pDevice->get())
 		.setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
-		.setSwapChainExtent(m_pSwapChain->getExtent())
-		.setColorFormat(m_pSwapChain->getImageFormat())
-		.setDepthFormat(findDepthFormat())
-		.setVertexInputBindingDescription(Vertex::getBindingDescription())
-		.setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
-		.setShaderPaths("shaders/gbuffer.vert.spv", "shaders/gbuffer.frag.spv")
-		.build();*/
+        .setSwapChainExtent(m_pSwapChain->getExtent())
+        .setDepthFormat(findDepthFormat())
+        .setVertexInputBindingDescription(Vertex::getBindingDescription())
+        .setVertexInputAttributeDescriptions(Vertex::getDepthAttributeDescriptions())
+        .setShaderPaths("shaders/depth.vert.spv", "shaders/depth.frag.spv")
+        .setAttachmentCount(1)
+        .enableDepthTest(true)
+        .enableDepthWrite(true)
+		.setDepthCompareOp(VK_COMPARE_OP_LESS)
+        .build();
+
+
+    // Create the final pass graphics pipeline
+    m_pFinalPipeline = GraphicsPipelineBuilder()
+        .setDevice(m_pDevice->get())
+        .setDescriptorSetLayout(m_pDescriptorManager->getFinalPassDescriptorSetLayout()) // Updated
+        .setSwapChainExtent(m_pSwapChain->getExtent())
+        .setColorFormats({ m_pSwapChain->getImageFormat() })
+        .setDepthFormat(VK_FORMAT_UNDEFINED)
+        .setVertexInputBindingDescription({})
+        .setVertexInputAttributeDescriptions({})
+        .setShaderPaths("shaders/final.vert.spv", "shaders/final.frag.spv")
+        .setAttachmentCount(1)
+        .enableDepthTest(false)
+        .setRasterizationState(VK_CULL_MODE_NONE)
+        .build();
+
+
 
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
 }
@@ -273,85 +310,42 @@ void Renderer::createCommandBuffers()
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
-    // Begin command buffer
-        // Begin command buffer
+    // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
     if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
+        throw std::runtime_error("Failed to begin recording command buffer!");
     }
 
-    // Transition the diffuse attachment to TRANSFER_SRC_OPTIMAL
+    // Transition G-buffer images from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
     transitionImageLayout(
         commandBuffer,
         m_GBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_ACCESS_TRANSFER_READ_BIT
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
     );
 
-    // Transition the swapchain image to TRANSFER_DST_OPTIMAL
     transitionImageLayout(
         commandBuffer,
-        m_pSwapChain->getImages()[imageIndex],
+        m_GBuffer.pSpecularImage->getImage(),
         VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_ACCESS_NONE,
-        VK_ACCESS_TRANSFER_WRITE_BIT
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
     );
 
-    VkRenderingAttachmentInfo colorAttachments[2]{};
-
-    // Diffuse attachment
-    colorAttachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    colorAttachments[0].imageView = m_GBuffer.diffuseImageView;
-    colorAttachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachments[0].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } }; // Clear color for diffuse attachment
-
-    // Specular attachment
-    colorAttachments[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    colorAttachments[1].imageView = m_GBuffer.specularImageView;
-    colorAttachments[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachments[1].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } }; // Clear color for specular attachment
-
-    VkRenderingAttachmentInfo depthAttachment{};
-    depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    depthAttachment.imageView = m_GBuffer.depthImageView;
-    depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthAttachment.clearValue.depthStencil = { 1.0f, 0 };
-
-    VkRenderingInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea.offset = { 0, 0 };
-    renderingInfo.renderArea.extent = m_pSwapChain->getExtent();
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 2;
-    renderingInfo.pColorAttachments = colorAttachments;
-    renderingInfo.pDepthAttachment = &depthAttachment;
-
-
-    vkCmdBeginRendering(commandBuffer, &renderingInfo);
-
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pGraphicsPipeline->get());
-
-    // Bind vertex and index buffers from the model
+    // Prepare common variables
     VkBuffer vertexBuffers[] = { m_pModel->getVertexBuffer() };
     VkDeviceSize offsets[] = { 0 };
-
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(commandBuffer, m_pModel->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -360,113 +354,312 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     viewport.height = static_cast<float>(m_pSwapChain->getExtent().height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset = { 0, 0 };
     scissor.extent = m_pSwapChain->getExtent();
-    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    Frustum frustum{ m_UniformBufferObject.proj,m_UniformBufferObject.view };
-
-    // Loop over submeshes and draw each one
+    Frustum frustum{ m_UniformBufferObject.proj, m_UniformBufferObject.view };
     const auto& submeshes = m_pModel->getSubmeshes();
-    for (const auto& submesh : submeshes)
+
+    // **Depth Pre-Pass**
     {
-        // Transform the bounding box by the model matrix if necessary
-        glm::vec3 transformedMin = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMin, 1.0f));
-        glm::vec3 transformedMax = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMax, 1.0f));
+        // Begin depth-only rendering
+        VkRenderingAttachmentInfo depthAttachment{};
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.imageView = m_GBuffer.depthImageView;
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Clear depth buffer
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.clearValue.depthStencil = { 1.0f, 0 };
 
-        // Perform frustum culling
-        if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
-            continue; // Skip this submesh
+        VkRenderingInfo depthRenderingInfo{};
+        depthRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        depthRenderingInfo.renderArea.offset = { 0, 0 };
+        depthRenderingInfo.renderArea.extent = m_pSwapChain->getExtent();
+        depthRenderingInfo.layerCount = 1;
+        depthRenderingInfo.colorAttachmentCount = 0; // No color attachments
+        depthRenderingInfo.pDepthAttachment = &depthAttachment;
+
+        vkCmdBeginRendering(commandBuffer, &depthRenderingInfo);
+
+        // Bind the depth pre-pass pipeline
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pDepthPipeline->get());
+
+        // Bind vertex and index buffers
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, m_pModel->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+        // Set viewport and scissor
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        // Render the scene
+        for (const auto& submesh : submeshes)
+        {
+            // Transform the bounding box by the model matrix
+            glm::vec3 transformedMin = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMin, 1.0f));
+            glm::vec3 transformedMax = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMax, 1.0f));
+
+            // Perform frustum culling
+            if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
+                continue;
+            }
+
+            // Calculate descriptor set index
+            uint32_t descriptorSetIndex = m_currentFrame * m_pModel->getMaterials().size() + submesh.materialIndex;
+
+            // Bind descriptor set for the current material and frame
+            vkCmdBindDescriptorSets(
+                commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_pGraphicsPipeline->getPipelineLayout(),
+                0,
+                1,
+                &m_pDescriptorManager->getDescriptorSets()[descriptorSetIndex],
+                0,
+                nullptr
+            );
+
+            // Draw submesh
+            vkCmdDrawIndexed(
+                commandBuffer,
+                submesh.indexCount,
+                1,
+                submesh.indexStart,
+                0,
+                0
+            );
         }
-        // Calculate descriptor set index
-        uint32_t descriptorSetIndex = m_currentFrame * m_pModel->getMaterials().size() + submesh.materialIndex;
 
-        // Bind the descriptor set for the current material and frame
+        vkCmdEndRendering(commandBuffer);
+    }
+
+    // **Memory Barrier for Depth Buffer (Synchronization2)**
+    {
+        // Ensure depth data is available for the main pass
+        VkImageMemoryBarrier2 depthBarrier{};
+        depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        depthBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        depthBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        depthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+        depthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        depthBarrier.image = m_GBuffer.pDepthImage->getImage();
+        depthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        depthBarrier.subresourceRange.baseMipLevel = 0;
+        depthBarrier.subresourceRange.levelCount = 1;
+        depthBarrier.subresourceRange.baseArrayLayer = 0;
+        depthBarrier.subresourceRange.layerCount = 1;
+
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.imageMemoryBarrierCount = 1;
+        dependencyInfo.pImageMemoryBarriers = &depthBarrier;
+
+        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+    }
+
+    // **Main Rendering Pass**
+    {
+        // Set up color attachments
+        VkRenderingAttachmentInfo colorAttachments[2]{};
+
+        // Diffuse attachment
+        colorAttachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachments[0].imageView = m_GBuffer.diffuseImageView;
+        colorAttachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachments[0].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+        // Specular attachment
+        colorAttachments[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachments[1].imageView = m_GBuffer.specularImageView;
+        colorAttachments[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachments[1].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+        // Depth attachment (load existing depth buffer from pre-pass)
+        VkRenderingAttachmentInfo depthAttachment{};
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.imageView = m_GBuffer.depthImageView;
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // Load depth from pre-pass
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+        VkRenderingInfo renderingInfo{};
+        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        renderingInfo.renderArea.offset = { 0, 0 };
+        renderingInfo.renderArea.extent = m_pSwapChain->getExtent();
+        renderingInfo.layerCount = 1;
+        renderingInfo.viewMask = 0;
+        renderingInfo.colorAttachmentCount = 2;
+        renderingInfo.pColorAttachments = colorAttachments;
+        renderingInfo.pDepthAttachment = &depthAttachment;
+
+        vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pGraphicsPipeline->get());
+
+        // Bind vertex and index buffers
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, m_pModel->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+        // Set viewport and scissor
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        // Render the scene with material bindings
+        for (const auto& submesh : submeshes)
+        {
+            // Transform the bounding box by the model matrix
+            glm::vec3 transformedMin = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMin, 1.0f));
+            glm::vec3 transformedMax = glm::vec3(m_UniformBufferObject.model * glm::vec4(submesh.bboxMax, 1.0f));
+
+            // Perform frustum culling
+            if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
+                continue;
+            }
+
+            // Calculate descriptor set index
+            uint32_t descriptorSetIndex = m_currentFrame * m_pModel->getMaterials().size() + submesh.materialIndex;
+
+            // Bind descriptor set for the current material and frame
+            vkCmdBindDescriptorSets(
+                commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_pGraphicsPipeline->getPipelineLayout(),
+                0,
+                1,
+                &m_pDescriptorManager->getDescriptorSets()[descriptorSetIndex],
+                0,
+                nullptr
+            );
+
+            // Draw submesh
+            vkCmdDrawIndexed(
+                commandBuffer,
+                submesh.indexCount,
+                1,
+                submesh.indexStart,
+                0,
+                0
+            );
+        }
+
+        vkCmdEndRendering(commandBuffer);
+    }
+
+    // Transition G-buffer images to SHADER_READ_ONLY_OPTIMAL for final pass
+    transitionImageLayout(
+        commandBuffer,
+        m_GBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    transitionImageLayout(
+        commandBuffer,
+        m_GBuffer.pSpecularImage->getImage(),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    // **Transition Swapchain Image for Final Pass**
+    {
+        // Transition swapchain image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
+        transitionImageLayout(
+            commandBuffer,
+            m_pSwapChain->getImages()[imageIndex],
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_2_NONE,
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+
+    }
+
+    // **Final Rendering Pass**
+    {
+        // Begin final rendering pass to the swapchain image
+        VkRenderingAttachmentInfo colorAttachment{};
+        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachment.imageView = m_pSwapChain->getImageViews()[imageIndex];
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+        VkRenderingInfo finalRenderingInfo{};
+        finalRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        finalRenderingInfo.renderArea.offset = { 0, 0 };
+        finalRenderingInfo.renderArea.extent = m_pSwapChain->getExtent();
+        finalRenderingInfo.layerCount = 1;
+        finalRenderingInfo.colorAttachmentCount = 1;
+        finalRenderingInfo.pColorAttachments = &colorAttachment;
+
+        vkCmdBeginRendering(commandBuffer, &finalRenderingInfo);
+
+        // Bind the final pass pipeline
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pFinalPipeline->get());
+
+        // Bind the descriptor set with G-buffer images
         vkCmdBindDescriptorSets(
             commandBuffer,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_pGraphicsPipeline->getPipelineLayout(),
+            m_pFinalPipeline->getPipelineLayout(),
             0,
             1,
-            &m_pDescriptorManager->getDescriptorSets()[descriptorSetIndex],
+            &m_pDescriptorManager->getFinalPassDescriptorSet(), // Updated
             0,
             nullptr
         );
 
-        // Draw the submesh
-        vkCmdDrawIndexed(
-            commandBuffer,
-            submesh.indexCount,     // Number of indices in the submesh
-            1,                      // Instance count
-            submesh.indexStart,    // First index
-            0,                      // Vertex offset
-            0                       // First instance
-        );
+        // Set viewport and scissor
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        // Draw fullscreen triangle (or quad)
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+        vkCmdEndRendering(commandBuffer);
     }
 
-    vkCmdEndRendering(commandBuffer);
-
-    // Copy the diffuse attachment to the swapchain image
-    VkImageCopy copyRegion{};
-    copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    copyRegion.srcSubresource.mipLevel = 0;
-    copyRegion.srcSubresource.baseArrayLayer = 0;
-    copyRegion.srcSubresource.layerCount = 1;
-    copyRegion.srcOffset = { 0, 0, 0 };
-
-    copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    copyRegion.dstSubresource.mipLevel = 0;
-    copyRegion.dstSubresource.baseArrayLayer = 0;
-    copyRegion.dstSubresource.layerCount = 1;
-    copyRegion.dstOffset = { 0, 0, 0 };
-
-    copyRegion.extent.width = m_pSwapChain->getExtent().width;
-    copyRegion.extent.height = m_pSwapChain->getExtent().height;
-    copyRegion.extent.depth = 1;
-
-    vkCmdCopyImage(
-        commandBuffer,
-        m_GBuffer.pDiffuseImage->getImage(),
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        m_pSwapChain->getImages()[imageIndex],
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &copyRegion
-    );
-
-    // Transition the diffuse attachment back to COLOR_ATTACHMENT_OPTIMAL
+    // Transition swapchain image to PRESENT_SRC_KHR for presentation
     transitionImageLayout(
         commandBuffer,
-        m_GBuffer.pDiffuseImage->getImage(),
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        m_pSwapChain->getImages()[imageIndex],
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_TRANSFER_READ_BIT,
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-    );
-
-    // Transition the swapchain image to PRESENT_SRC_KHR
-    transitionImageLayout(
-        commandBuffer,
-        m_pSwapChain->getImages()[imageIndex],
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-        VK_ACCESS_TRANSFER_WRITE_BIT,
-        VK_ACCESS_NONE
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_NONE,
+        VK_IMAGE_ASPECT_COLOR_BIT
     );
 
+
+    // End command buffer recording
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
+        throw std::runtime_error("Failed to record command buffer!");
     }
 }
-
-
 
 void Renderer::drawFrame()
 {
@@ -638,21 +831,23 @@ void Renderer::transitionImageLayout(
     VkPipelineStageFlags2 srcStageMask,
     VkPipelineStageFlags2 dstStageMask,
     VkAccessFlags2 srcAccessMask,
-    VkAccessFlags2 dstAccessMask)
+    VkAccessFlags2 dstAccessMask,
+    VkImageAspectFlags aspectMask)
 {
     VkImageMemoryBarrier2 barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
     barrier.oldLayout = oldLayout;
     barrier.newLayout = newLayout;
     barrier.srcStageMask = srcStageMask;
-    barrier.dstStageMask = dstStageMask;
     barrier.srcAccessMask = srcAccessMask;
+    barrier.dstStageMask = dstStageMask;
     barrier.dstAccessMask = dstAccessMask;
     barrier.image = image;
-    barrier.subresourceRange = {
-        VK_IMAGE_ASPECT_COLOR_BIT, // Adjust for depth images
-        0, 1, 0, 1
-    };
+    barrier.subresourceRange.aspectMask = aspectMask;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
 
     VkDependencyInfo dependencyInfo{};
     dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -661,6 +856,7 @@ void Renderer::transitionImageLayout(
 
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
+
 
 void Renderer::createGBuffer()
 {
@@ -720,6 +916,7 @@ void Renderer::createGBuffer()
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
     );
+
 }
 
 
@@ -757,6 +954,8 @@ void Renderer::cleanup()
     vmaDestroyAllocator(m_VmaAllocator);
 
     delete m_pGraphicsPipeline;
+	delete m_pDepthPipeline;
+	delete m_pFinalPipeline;
     delete m_pSyncObjects;
     delete m_pCommandPool;
     delete m_pDevice;
