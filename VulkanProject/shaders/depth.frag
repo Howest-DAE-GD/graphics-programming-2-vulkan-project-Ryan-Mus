@@ -2,11 +2,11 @@
 
 layout(location = 0) in vec2 fragTexCoord;
 
-layout(binding = 3) uniform sampler2D alphaSampler;
+layout(binding = 1) uniform sampler2D diffuseSampler;
 
 void main() 
 {
-   if(texture(alphaSampler, fragTexCoord).r < 0.5) 
+   if(texture(diffuseSampler, fragTexCoord).a < 0.5) 
    {
 	  discard; // Discard fragments with low alpha
    }

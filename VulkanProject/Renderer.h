@@ -71,7 +71,12 @@ private:
         alignas(16) glm::mat4 model;
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
-        alignas(16) glm::vec3 cameraPosition; 
+		alignas(16) glm::vec3 cameraPosition;
+		alignas(16) glm::vec2 viewportSize;
+		alignas(16) glm::vec3 lightPosition; // Instead of hardcoding it
+		alignas(16) glm::vec3 lightColor;
+		alignas(16) float lightIntensity;
+		alignas(16) float lightRadius;
     };
 
     struct GBuffer
@@ -79,8 +84,11 @@ private:
         Image* pDiffuseImage;
 		VkImageView diffuseImageView;
 
-		Image* pSpecularImage;
-		VkImageView specularImageView;
+		Image* pNormalImage;
+        VkImageView normalImageView;
+
+        Image* pMetallicRougnessImage;
+        VkImageView metallicRoughnessImageView;
 
         Image* pDepthImage;
 		VkImageView depthImageView;
@@ -115,8 +123,8 @@ private:
     const int MAX_FRAMES_IN_FLIGHT = 2;
 
     UniformBufferObject m_UniformBufferObject{};
-	GBuffer m_GBuffer;
+    std::vector<GBuffer> m_GBuffers;
 
     // Paths
-    const std::string MODEL_PATH_ = "models/sponza.obj";
+    const std::string MODEL_PATH_ = "models/Sponza/glTF/Sponza.gltf";
 };

@@ -9,12 +9,12 @@ VkSampler Texture::s_textureSampler = VK_NULL_HANDLE;
 size_t Texture::s_samplerUsers = 0;
 
 Texture::Texture(Device* pDevice, VmaAllocator allocator, CommandPool* pCommandPool,
-                 const std::string& texturePath, VkPhysicalDevice physicalDevice)
+    const std::string& texturePath, VkPhysicalDevice physicalDevice, Format format)
     : m_pDevice(pDevice), m_Allocator(allocator), m_pCommandPool(pCommandPool),
-      m_TexturePath(texturePath), m_PhysicalDevice(physicalDevice),
-      m_pTextureImage(nullptr), m_TextureImageView(VK_NULL_HANDLE) 
+    m_TexturePath(texturePath), m_PhysicalDevice(physicalDevice),
+    m_pTextureImage(nullptr), m_TextureImageView(VK_NULL_HANDLE), m_Format(format)
 {
-    spdlog::info("Creating Texture: {}", m_TexturePath);
+    spdlog::info("Creating Texture: {} with format {}", m_TexturePath, (m_Format == Format::SRGB ? "SRGB" : "UNORM"));
     createTextureImage();
     createTextureImageView();
 
@@ -24,8 +24,9 @@ Texture::Texture(Device* pDevice, VmaAllocator allocator, CommandPool* pCommandP
     }
     s_samplerUsers++;
 
-	spdlog::debug("Texture created: {}", m_TexturePath);
+    spdlog::debug("Texture created: {}", m_TexturePath);
 }
+
 
 Texture::~Texture() 
 {
@@ -42,13 +43,13 @@ Texture::~Texture()
 	spdlog::debug("Texture destroyed: {}", m_TexturePath);
 }
 
-void Texture::createTextureImage() 
+void Texture::createTextureImage()
 {
     int texWidth, texHeight, texChannels;
     stbi_uc* pixels = stbi_load(m_TexturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
-    if (!pixels) 
+    if (!pixels)
     {
         throw std::runtime_error("Failed to load texture image!");
     }
@@ -70,12 +71,15 @@ void Texture::createTextureImage()
 
     stbi_image_free(pixels);
 
+    // Determine the Vulkan format based on the texture format
+    VkFormat vkFormat = (m_Format == Format::SRGB) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+
     // Create texture image
     m_pTextureImage = new Image(m_pDevice, m_Allocator);
     m_pTextureImage->createImage(
         texWidth,
         texHeight,
-        VK_FORMAT_R8G8B8A8_SRGB,
+        vkFormat,
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY
@@ -85,7 +89,7 @@ void Texture::createTextureImage()
     m_pTextureImage->transitionImageLayout(
         m_pCommandPool,
         m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R8G8B8A8_SRGB,
+        vkFormat,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
     );
@@ -100,21 +104,26 @@ void Texture::createTextureImage()
     m_pTextureImage->transitionImageLayout(
         m_pCommandPool,
         m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R8G8B8A8_SRGB,
+        vkFormat,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     );
 
-    spdlog::info("Texture image created: {} ({}x{}, {} channels)", m_TexturePath, texWidth, texHeight, texChannels);
+    spdlog::info("Texture image created: {} ({}x{}, {} channels, format: {})",
+        m_TexturePath, texWidth, texHeight, texChannels,
+        (m_Format == Format::SRGB ? "SRGB" : "UNORM"));
 }
 
-void Texture::createTextureImageView() 
+
+void Texture::createTextureImageView()
 {
+    VkFormat vkFormat = (m_Format == Format::SRGB) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
     m_TextureImageView = m_pTextureImage->createImageView(
-        VK_FORMAT_R8G8B8A8_SRGB,
+        vkFormat,
         VK_IMAGE_ASPECT_COLOR_BIT
     );
 }
+
 
 void Texture::createTextureSampler(VkDevice device, VkPhysicalDevice physicalDevice) 
 {

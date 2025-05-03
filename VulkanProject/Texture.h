@@ -10,11 +10,16 @@
 // Texture sampler will probably not be static later.
 //
 class Device;
-class Texture 
+class Texture
 {
 public:
+    enum class Format {
+        SRGB,
+        UNORM
+    };
+
     Texture(Device* pDevice, VmaAllocator allocator, CommandPool* pCommandPool,
-            const std::string& texturePath, VkPhysicalDevice physicalDevice);
+        const std::string& texturePath, VkPhysicalDevice physicalDevice, Format format = Format::SRGB);
     ~Texture();
 
     void createTextureImage();
@@ -34,6 +39,9 @@ private:
     Image* m_pTextureImage;
     VkImageView m_TextureImageView;
 
+    Format m_Format; // New member to store the texture format
+
     static VkSampler s_textureSampler;
     static size_t s_samplerUsers; // Reference count for the sampler
 };
+

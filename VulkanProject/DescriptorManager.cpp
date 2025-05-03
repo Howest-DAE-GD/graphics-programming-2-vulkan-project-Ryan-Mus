@@ -9,6 +9,7 @@ DescriptorManager::DescriptorManager(VkDevice device, size_t maxFramesInFlight, 
 {
     //createDescriptorSetLayout();
     //createDescriptorPool();
+	m_FinalPassDescriptorSets.resize(maxFramesInFlight); // Initialize the final pass descriptor sets
     spdlog::debug("DescriptorManager created.");
 }
 
@@ -54,27 +55,27 @@ void DescriptorManager::createDescriptorSetLayout()
     diffuseSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     diffuseSamplerBinding.pImmutableSamplers = nullptr;
 
-    // Binding for Combined Image Sampler (Specular Texture)
-    VkDescriptorSetLayoutBinding specularSamplerBinding{};
-    specularSamplerBinding.binding = 2;
-    specularSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    specularSamplerBinding.descriptorCount = 1;
-    specularSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    specularSamplerBinding.pImmutableSamplers = nullptr;
+    // Binding for Combined Image Sampler (normal Texture)
+    VkDescriptorSetLayoutBinding normalSamplerBinding{};
+    normalSamplerBinding.binding = 2;
+    normalSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    normalSamplerBinding.descriptorCount = 1;
+    normalSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    normalSamplerBinding.pImmutableSamplers = nullptr;
 
-    // Binding for Combined Image Sampler (Alpha Texture)
-    VkDescriptorSetLayoutBinding alphaSamplerBinding{};
-    alphaSamplerBinding.binding = 3;
-    alphaSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    alphaSamplerBinding.descriptorCount = 1;
-    alphaSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    alphaSamplerBinding.pImmutableSamplers = nullptr;
+    // Binding for Combined Image Sampler (metallic roughness Texture)
+    VkDescriptorSetLayoutBinding metallicRoughnessSamplerBinding{};
+    metallicRoughnessSamplerBinding.binding = 3;
+    metallicRoughnessSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    metallicRoughnessSamplerBinding.descriptorCount = 1;
+    metallicRoughnessSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    metallicRoughnessSamplerBinding.pImmutableSamplers = nullptr;
 
     std::array<VkDescriptorSetLayoutBinding, 4> bindings = {
         uboLayoutBinding,
         diffuseSamplerBinding,
-        specularSamplerBinding,
-        alphaSamplerBinding
+        normalSamplerBinding,
+        metallicRoughnessSamplerBinding
     };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -92,28 +93,28 @@ void DescriptorManager::createDescriptorSetLayout()
 void DescriptorManager::createDescriptorPool()
 {
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        // For uniform buffers
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount) },
+        // Total uniform buffers (main pass + final pass)
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount + 1)) },
 
-        // For combined image samplers used in the main pass
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount * 3) },
-
-        // For combined image samplers used in the final pass
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 } // Diffuse and specular
+          // Total combined image samplers (main pass + final pass)
+          { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount * 3 + 4)) }
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(m_MaxFramesInFlight * m_MaterialCount + 1); // +1 for the final pass
+
+    // Corrected maxSets calculation
+    poolInfo.maxSets = static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount + 1)); // Total descriptor sets
 
     if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescriptorPool) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to create descriptor pool!");
     }
 }
-
 
 void DescriptorManager::createDescriptorSets(
     const std::vector<VkBuffer>& uniformBuffers,
@@ -156,15 +157,15 @@ void DescriptorManager::createDescriptorSets(
             diffuseImageInfo.imageView = materials[matIndex]->pDiffuseTexture->getTextureImageView();
             diffuseImageInfo.sampler = Texture::getTextureSampler();
 
-            VkDescriptorImageInfo specularImageInfo{};
-            specularImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            specularImageInfo.imageView = materials[matIndex]->pSpecularTexture->getTextureImageView();
-            specularImageInfo.sampler = Texture::getTextureSampler();
+            VkDescriptorImageInfo normalImageInfo{};
+            normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            normalImageInfo.imageView = materials[matIndex]->pNormalTexture->getTextureImageView();
+            normalImageInfo.sampler = Texture::getTextureSampler();
 
-            VkDescriptorImageInfo alphaImageInfo{};
-            alphaImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            alphaImageInfo.imageView = materials[matIndex]->pAlphaTexture->getTextureImageView();
-            alphaImageInfo.sampler = Texture::getTextureSampler();
+            VkDescriptorImageInfo metallicRoughnessImageInfo{};
+            metallicRoughnessImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            metallicRoughnessImageInfo.imageView = materials[matIndex]->pMetallicRoughnessTexture->getTextureImageView();
+            metallicRoughnessImageInfo.sampler = Texture::getTextureSampler();
 
             std::array<VkWriteDescriptorSet, 4> descriptorWrites{};
 
@@ -186,23 +187,23 @@ void DescriptorManager::createDescriptorSets(
             descriptorWrites[1].descriptorCount = 1;
             descriptorWrites[1].pImageInfo = &diffuseImageInfo;
 
-            // Specular Texture
+            // Normal Texture
             descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[2].dstSet = m_DescriptorSets[descriptorSetIndex];
             descriptorWrites[2].dstBinding = 2;
             descriptorWrites[2].dstArrayElement = 0;
             descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[2].descriptorCount = 1;
-            descriptorWrites[2].pImageInfo = &specularImageInfo;
+            descriptorWrites[2].pImageInfo = &normalImageInfo;
 
-            // Alpha Texture
+            // Metallic Roughness Texture
             descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[3].dstSet = m_DescriptorSets[descriptorSetIndex];
             descriptorWrites[3].dstBinding = 3;
             descriptorWrites[3].dstArrayElement = 0;
             descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[3].descriptorCount = 1;
-            descriptorWrites[3].pImageInfo = &alphaImageInfo;
+            descriptorWrites[3].pImageInfo = &metallicRoughnessImageInfo;
 
             vkUpdateDescriptorSets(
                 m_Device,
@@ -237,15 +238,39 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
     diffuseBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     diffuseBinding.pImmutableSamplers = nullptr;
 
-    // Binding for specular sampler (binding = 1)
-    VkDescriptorSetLayoutBinding specularBinding{};
-    specularBinding.binding = 1;
-    specularBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    specularBinding.descriptorCount = 1;
-    specularBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    specularBinding.pImmutableSamplers = nullptr;
+    // Binding for normal sampler (binding = 1)
+    VkDescriptorSetLayoutBinding normalBinding{};
+    normalBinding.binding = 1;
+    normalBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    normalBinding.descriptorCount = 1;
+    normalBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    normalBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = { diffuseBinding, specularBinding };
+	// binding for metallic roughness sampler (binding = 2)
+	VkDescriptorSetLayoutBinding metallicRoughnessBinding{};
+	metallicRoughnessBinding.binding = 2;
+	metallicRoughnessBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	metallicRoughnessBinding.descriptorCount = 1;
+	metallicRoughnessBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	metallicRoughnessBinding.pImmutableSamplers = nullptr;
+
+	// Binding for depth sampler (binding = 3)
+	VkDescriptorSetLayoutBinding depthBinding{};
+	depthBinding.binding = 3;
+	depthBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	depthBinding.descriptorCount = 1;
+	depthBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	depthBinding.pImmutableSamplers = nullptr;
+
+	// Binding for uniform buffer (binding = 4)
+    VkDescriptorSetLayoutBinding uboLayoutBinding{};
+    uboLayoutBinding.binding = 4;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT; // Allow usage in both shaders
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 5> bindings = { diffuseBinding, normalBinding, metallicRoughnessBinding, depthBinding, uboLayoutBinding};
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -263,7 +288,15 @@ VkDescriptorSetLayout DescriptorManager::getFinalPassDescriptorSetLayout() const
     return m_FinalPassDescriptorSetLayout;
 }
 
-void DescriptorManager::createFinalPassDescriptorSet(VkImageView diffuseImageView, VkImageView specularImageView, VkSampler sampler)
+void DescriptorManager::createFinalPassDescriptorSet(
+    size_t frameIndex,
+    VkImageView diffuseImageView,
+    VkImageView normalImageView,
+    VkImageView metallicRoughnessImageView,
+    VkImageView depthImageView,
+    VkBuffer uniformBuffer,
+    size_t uniformBufferObjectSize,
+    VkSampler sampler)
 {
     // Allocate the descriptor set
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -272,7 +305,7 @@ void DescriptorManager::createFinalPassDescriptorSet(VkImageView diffuseImageVie
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &m_FinalPassDescriptorSetLayout;
 
-    if (vkAllocateDescriptorSets(m_Device, &allocInfo, &m_FinalPassDescriptorSet) != VK_SUCCESS)
+    if (vkAllocateDescriptorSets(m_Device, &allocInfo, &m_FinalPassDescriptorSets[frameIndex]) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to allocate descriptor set for the final pass!");
     }
@@ -283,32 +316,145 @@ void DescriptorManager::createFinalPassDescriptorSet(VkImageView diffuseImageVie
     diffuseImageInfo.imageView = diffuseImageView;
     diffuseImageInfo.sampler = sampler;
 
-    VkDescriptorImageInfo specularImageInfo{};
-    specularImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    specularImageInfo.imageView = specularImageView;
-    specularImageInfo.sampler = sampler;
+    VkDescriptorImageInfo normalImageInfo{};
+    normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    normalImageInfo.imageView = normalImageView;
+    normalImageInfo.sampler = sampler;
 
-    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+	VkDescriptorImageInfo metallicRoughnessImageInfo{};
+	metallicRoughnessImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	metallicRoughnessImageInfo.imageView = metallicRoughnessImageView;
+	metallicRoughnessImageInfo.sampler = sampler;
+
+	VkDescriptorImageInfo depthImageInfo{};
+	depthImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	depthImageInfo.imageView = depthImageView;
+	depthImageInfo.sampler = sampler;
+
+    VkDescriptorBufferInfo bufferInfo{};
+	bufferInfo.buffer = uniformBuffer;
+	bufferInfo.offset = 0;
+	bufferInfo.range = uniformBufferObjectSize;
+
+    std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[0].dstSet = m_FinalPassDescriptorSet;
+    descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
     descriptorWrites[0].dstBinding = 0;
     descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptorWrites[0].descriptorCount = 1;
     descriptorWrites[0].pImageInfo = &diffuseImageInfo;
 
     descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[1].dstSet = m_FinalPassDescriptorSet;
+    descriptorWrites[1].dstSet = m_FinalPassDescriptorSets[frameIndex];
     descriptorWrites[1].dstBinding = 1;
     descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptorWrites[1].descriptorCount = 1;
-    descriptorWrites[1].pImageInfo = &specularImageInfo;
+    descriptorWrites[1].pImageInfo = &normalImageInfo;
+
+	descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[2].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[2].dstBinding = 2;
+	descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[2].descriptorCount = 1;
+	descriptorWrites[2].pImageInfo = &metallicRoughnessImageInfo;
+
+	descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[3].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[3].dstBinding = 3;
+	descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[3].descriptorCount = 1;
+	descriptorWrites[3].pImageInfo = &depthImageInfo;
+
+	descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[4].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[4].dstBinding = 4;
+	descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorWrites[4].descriptorCount = 1;
+	descriptorWrites[4].pBufferInfo = &bufferInfo;
 
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
-const VkDescriptorSet& DescriptorManager::getFinalPassDescriptorSet() const
+const std::vector<VkDescriptorSet>& DescriptorManager::getFinalPassDescriptorSets() const
 {
-    return m_FinalPassDescriptorSet;
+    return m_FinalPassDescriptorSets;
 }
+
+void DescriptorManager::updateFinalPassDescriptorSet(
+    size_t frameIndex,
+    VkImageView diffuseImageView,
+    VkImageView normalImageView,
+    VkImageView metallicRoughnessImageView,
+    VkImageView depthImageView,
+    VkBuffer uniformBuffer,
+    size_t uniformBufferObjectSize,
+    VkSampler sampler)
+{
+    // Update the descriptor set with the new G-Buffer images
+    VkDescriptorImageInfo diffuseImageInfo{};
+    diffuseImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    diffuseImageInfo.imageView = diffuseImageView;
+    diffuseImageInfo.sampler = sampler;
+
+    VkDescriptorImageInfo normalImageInfo{};
+    normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    normalImageInfo.imageView = normalImageView;
+    normalImageInfo.sampler = sampler;
+
+	VkDescriptorImageInfo metallicRoughnessImageInfo{};
+	metallicRoughnessImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	metallicRoughnessImageInfo.imageView = metallicRoughnessImageView;
+	metallicRoughnessImageInfo.sampler = sampler;
+
+	VkDescriptorImageInfo depthImageInfo{};
+	depthImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	depthImageInfo.imageView = depthImageView;
+	depthImageInfo.sampler = sampler;
+
+	VkDescriptorBufferInfo bufferInfo{};
+	bufferInfo.buffer = uniformBuffer;
+	bufferInfo.offset = 0;
+	bufferInfo.range = uniformBufferObjectSize;
+
+    std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pImageInfo = &diffuseImageInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = m_FinalPassDescriptorSets[frameIndex];
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pImageInfo = &normalImageInfo;
+
+	descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[2].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[2].dstBinding = 2;
+	descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[2].descriptorCount = 1;
+	descriptorWrites[2].pImageInfo = &metallicRoughnessImageInfo;
+
+	descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[3].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[3].dstBinding = 3;
+	descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[3].descriptorCount = 1;
+	descriptorWrites[3].pImageInfo = &depthImageInfo;
+
+	descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[4].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[4].dstBinding = 4;
+	descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorWrites[4].descriptorCount = 1;
+	descriptorWrites[4].pBufferInfo = &bufferInfo;
+
+    vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+}
+
 

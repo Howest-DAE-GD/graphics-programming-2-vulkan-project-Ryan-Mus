@@ -18,14 +18,34 @@ public:
         size_t uniformBufferObjectSize
     );
 
-    // New methods for the final pass
     void createFinalPassDescriptorSetLayout();
-    void createFinalPassDescriptorSet(VkImageView diffuseImageView, VkImageView specularImageView, VkSampler sampler);
+
+    void createFinalPassDescriptorSet(
+        size_t frameIndex,
+        VkImageView diffuseImageView,
+        VkImageView normalImageView,
+        VkImageView metallicRoughnessImageView,
+        VkImageView depthImageView,
+        VkBuffer uniformBuffer,
+        size_t uniformBufferObjectSize,
+        VkSampler sampler
+    );
+
+    void updateFinalPassDescriptorSet(
+        size_t frameIndex,
+        VkImageView diffuseImageView,
+        VkImageView normalImageView,
+        VkImageView metallicRoughnessImageView,
+        VkImageView depthImageView,
+        VkBuffer uniformBuffer,
+        size_t uniformBufferObjectSize,
+        VkSampler sampler
+    );
 
     VkDescriptorSetLayout getDescriptorSetLayout() const;
-    VkDescriptorSetLayout getFinalPassDescriptorSetLayout() const; // New getter
+    VkDescriptorSetLayout getFinalPassDescriptorSetLayout() const;
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
-    const VkDescriptorSet& getFinalPassDescriptorSet() const; // New getter
+    const std::vector<VkDescriptorSet>& getFinalPassDescriptorSets() const;
 
 private:
     VkDevice m_Device;
@@ -36,5 +56,5 @@ private:
     VkDescriptorSetLayout m_FinalPassDescriptorSetLayout{}; // New member
     VkDescriptorPool m_DescriptorPool{};
     std::vector<VkDescriptorSet> m_DescriptorSets{};
-    VkDescriptorSet m_FinalPassDescriptorSet{}; // New member
+    std::vector<VkDescriptorSet> m_FinalPassDescriptorSets; // New member
 };

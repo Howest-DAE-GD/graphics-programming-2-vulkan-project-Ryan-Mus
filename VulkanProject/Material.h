@@ -11,6 +11,6 @@ public:
 
     // Material properties
     Texture* pDiffuseTexture;
-    Texture* pSpecularTexture;
-	Texture* pAlphaTexture;
+    Texture* pNormalTexture;
+	Texture* pMetallicRoughnessTexture;
 };

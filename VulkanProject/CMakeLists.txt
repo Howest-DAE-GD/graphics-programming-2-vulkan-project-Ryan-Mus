@@ -69,11 +69,26 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(resourcesvulkan)
 
+
+set(ASSIMP_BUILD_TESTS OFF)
+set(ASSIMP_BUILD_SAMPLES OFF)
+set(ASSIMP_BUILD_DOCS OFF)
+set(ASSIMP_BUILD_ZLIB ON)
+    
+# Add Assimp
+FetchContent_Declare(
+    assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG        v5.4.3 # Latest stable version
+)
+FetchContent_MakeAvailable(assimp)
+
 set(GLM_INCLUDE_DIR ${glm_SOURCE_DIR})
 set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include)
 set(STB_INCLUDE_DIR ${stb_SOURCE_DIR})
 set(TINYOBJLOADER_INCLUDE_DIR ${tinyobjloader_SOURCE_DIR})
 set(SPDLOG_INCLUDE_DIR ${spdlog_SOURCE_DIR}/include)
+set(ASSIMP_INCLUDE_DIR ${assimp_SOURCE_DIR}/include)
 
 add_executable(VulkanProject 
  "VulkanProject.cpp" 
@@ -109,12 +124,14 @@ target_include_directories(VulkanProject PRIVATE
     ${STB_INCLUDE_DIR}
     ${TINYOBJLOADER_INCLUDE_DIR}
     ${SPDLOG_INCLUDE_DIR}
+    ${ASSIMP_INCLUDE_DIR}
 )
 
 target_link_libraries(VulkanProject PRIVATE 
     Vulkan::Vulkan 
     glfw 
     spdlog::spdlog
+    assimp
 )
 
 set_target_properties(VulkanProject PROPERTIES

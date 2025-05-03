@@ -97,7 +97,7 @@ void Renderer::initVulkan()
         .addRequiredExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)
         .addRequiredExtension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
 		.addRequiredExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)
-		.addRequiredExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME)
+//		.addRequiredExtension(VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME)
         .setEnabledFeatures(m_pPhysicalDevice->getFeatures())
 		.setVulkan11Features(m_pPhysicalDevice->getVulkan11Features())
 		.setVulkan12Features(m_pPhysicalDevice->getVulkan12Features())
@@ -129,10 +129,11 @@ void Renderer::initVulkan()
     size_t materialCount = m_pModel->getMaterials().size();
     m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT, materialCount);
 
-    // Create descriptor set layouts and pools
-    m_pDescriptorManager->createDescriptorPool();
+    // Create descriptor set layouts and pools    
     m_pDescriptorManager->createDescriptorSetLayout();
-    m_pDescriptorManager->createFinalPassDescriptorSetLayout(); // New
+    m_pDescriptorManager->createFinalPassDescriptorSetLayout();
+
+    m_pDescriptorManager->createDescriptorPool();
 
     m_pModel->createVertexBuffer();
     m_pModel->createIndexBuffer();
@@ -156,11 +157,20 @@ void Renderer::initVulkan()
     );
 
     // Create descriptor set for the final pass
-    m_pDescriptorManager->createFinalPassDescriptorSet(
-        m_GBuffer.diffuseImageView,
-        m_GBuffer.specularImageView,
-        Texture::getTextureSampler() // Ensure this sampler is created
-    );
+    for (size_t frameIndex = 0; frameIndex < MAX_FRAMES_IN_FLIGHT; ++frameIndex)
+    {
+        m_pDescriptorManager->createFinalPassDescriptorSet(
+            frameIndex,
+            m_GBuffers[frameIndex].diffuseImageView,
+            m_GBuffers[frameIndex].normalImageView,
+            m_GBuffers[frameIndex].metallicRoughnessImageView,
+            m_GBuffers[frameIndex].depthImageView,
+            m_pUniformBuffers[frameIndex]->get(),
+            sizeof(UniformBufferObject),
+            Texture::getTextureSampler() // Ensure this sampler is created
+        );
+    }
+
 
     createCommandBuffers();
 
@@ -168,12 +178,12 @@ void Renderer::initVulkan()
         .setDevice(m_pDevice->get())
         .setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
         .setSwapChainExtent(m_pSwapChain->getExtent())
-        .setColorFormats({ VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM }) // Multiple color formats
+        .setColorFormats({ VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM}) // Multiple color formats
         .setDepthFormat(findDepthFormat())
         .setVertexInputBindingDescription(Vertex::getBindingDescription())
         .setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
         .setShaderPaths("shaders/shader.vert.spv", "shaders/shader.frag.spv")
-		.setAttachmentCount(2)
+		.setAttachmentCount(3)
 		.enableDepthTest(true)
 		.enableDepthWrite(false)
 		.setDepthCompareOp(VK_COMPARE_OP_EQUAL)
@@ -209,9 +219,15 @@ void Renderer::initVulkan()
         .setRasterizationState(VK_CULL_MODE_NONE)
         .build();
 
-
-
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
+// const vec3 lightPosition = vec3(0.0, 2.0, 0.0);  // Position in world space
+// const vec3 lightColor = vec3(1.0, 0.9, 0.7);     // Warm white color
+// const float lightIntensity = 1.0;                // Higher intensity for point light
+// const float lightRadius = 10.0;                  // Controls light falloff distance
+	m_UniformBufferObject.lightPosition = glm::vec3(0.0f, 2.0f, 0.0f); // Position in world space
+	m_UniformBufferObject.lightColor = glm::vec3(1.0f, 0.9f, 0.7f);    // Warm white color
+	m_UniformBufferObject.lightIntensity = 1.0f;                // Higher intensity for point light
+	m_UniformBufferObject.lightRadius = 10.0f;                  // Controls light falloff distance
 }
 
 void Renderer::createVmaAllocator() 
@@ -251,31 +267,6 @@ VkFormat Renderer::findSupportedFormat(
     throw std::runtime_error("failed to find supported format!");
 }
 
-//void Renderer::createFramebuffers() 
-//{
-//    m_SwapChainFramebuffers.resize(m_pSwapChain->getImageViews().size());
-//
-//    for (size_t i = 0; i < m_pSwapChain->getImageViews().size(); i++) {
-//        std::array<VkImageView, 2> attachments = {
-//            m_pSwapChain->getImageViews()[i],
-//            m_DepthImageView
-//        };
-//
-//        VkFramebufferCreateInfo framebufferInfo{};
-//        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-//        framebufferInfo.renderPass = m_pRenderPass->get();
-//        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-//        framebufferInfo.pAttachments = attachments.data();
-//        framebufferInfo.width = m_pSwapChain->getExtent().width;
-//        framebufferInfo.height = m_pSwapChain->getExtent().height;
-//        framebufferInfo.layers = 1;
-//
-//        if (vkCreateFramebuffer(m_pDevice->get(), &framebufferInfo, nullptr, &m_SwapChainFramebuffers[i]) != VK_SUCCESS) {
-//            throw std::runtime_error("failed to create framebuffer!");
-//        }
-//    }
-//}
-
 void Renderer::createUniformBuffers() 
 {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -310,6 +301,9 @@ void Renderer::createCommandBuffers()
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
+    // Get the G-buffer for the current frame
+    GBuffer& currentGBuffer = m_GBuffers[m_currentFrame];
+
     // Begin command buffer recording
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -318,29 +312,55 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         throw std::runtime_error("Failed to begin recording command buffer!");
     }
 
-    // Transition G-buffer images from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
+   
+    // Transition G-buffer images for the current frame
     transitionImageLayout(
         commandBuffer,
-        m_GBuffer.pDiffuseImage->getImage(),
-        VK_IMAGE_LAYOUT_UNDEFINED,
+        currentGBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_SHADER_READ_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT
     );
 
     transitionImageLayout(
         commandBuffer,
-        m_GBuffer.pSpecularImage->getImage(),
-        VK_IMAGE_LAYOUT_UNDEFINED,
+        currentGBuffer.pNormalImage->getImage(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_SHADER_READ_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pMetallicRougnessImage->getImage(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    // Transition depth image to DEPTH_STENCIL_ATTACHMENT_OPTIMAL for depth pre-pass
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pDepthImage->getImage(),
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
     );
 
     // Prepare common variables
@@ -367,7 +387,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         // Begin depth-only rendering
         VkRenderingAttachmentInfo depthAttachment{};
         depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        depthAttachment.imageView = m_GBuffer.depthImageView;
+        depthAttachment.imageView = currentGBuffer.depthImageView;
         depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Clear depth buffer
         depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -403,7 +423,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
             // Perform frustum culling
             if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
-                continue;
+                //continue;
             }
 
             // Calculate descriptor set index
@@ -446,7 +466,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         depthBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         depthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
         depthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        depthBarrier.image = m_GBuffer.pDepthImage->getImage();
+        depthBarrier.image = currentGBuffer.pDepthImage->getImage();
         depthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         depthBarrier.subresourceRange.baseMipLevel = 0;
         depthBarrier.subresourceRange.levelCount = 1;
@@ -464,28 +484,36 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // **Main Rendering Pass**
     {
         // Set up color attachments
-        VkRenderingAttachmentInfo colorAttachments[2]{};
+        VkRenderingAttachmentInfo colorAttachments[3]{};
 
         // Diffuse attachment
         colorAttachments[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        colorAttachments[0].imageView = m_GBuffer.diffuseImageView;
+        colorAttachments[0].imageView = currentGBuffer.diffuseImageView;
         colorAttachments[0].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachments[0].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
-        // Specular attachment
+        // Normal attachment
         colorAttachments[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        colorAttachments[1].imageView = m_GBuffer.specularImageView;
+        colorAttachments[1].imageView = currentGBuffer.normalImageView;
         colorAttachments[1].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachments[1].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
+        // Metallic-Roughness attachment
+        colorAttachments[2].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachments[2].imageView = currentGBuffer.metallicRoughnessImageView;
+        colorAttachments[2].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachments[2].clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
         // Depth attachment (load existing depth buffer from pre-pass)
         VkRenderingAttachmentInfo depthAttachment{};
         depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        depthAttachment.imageView = m_GBuffer.depthImageView;
+        depthAttachment.imageView = currentGBuffer.depthImageView;
         depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // Load depth from pre-pass
         depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -496,7 +524,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         renderingInfo.renderArea.extent = m_pSwapChain->getExtent();
         renderingInfo.layerCount = 1;
         renderingInfo.viewMask = 0;
-        renderingInfo.colorAttachmentCount = 2;
+        renderingInfo.colorAttachmentCount = 3;
         renderingInfo.pColorAttachments = colorAttachments;
         renderingInfo.pDepthAttachment = &depthAttachment;
 
@@ -521,7 +549,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
             // Perform frustum culling
             if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
-                continue;
+                //continue;
             }
 
             // Calculate descriptor set index
@@ -553,12 +581,16 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         vkCmdEndRendering(commandBuffer);
     }
 
+    // Define target layouts for post-rendering
+    VkImageLayout targetColorLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkImageLayout targetDepthLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
     // Transition G-buffer images to SHADER_READ_ONLY_OPTIMAL for final pass
     transitionImageLayout(
         commandBuffer,
-        m_GBuffer.pDiffuseImage->getImage(),
+        currentGBuffer.pDiffuseImage->getImage(),
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        targetColorLayout,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -568,14 +600,39 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
     transitionImageLayout(
         commandBuffer,
-        m_GBuffer.pSpecularImage->getImage(),
+        currentGBuffer.pNormalImage->getImage(),
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        targetColorLayout,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         VK_ACCESS_2_SHADER_READ_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pMetallicRougnessImage->getImage(),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        targetColorLayout,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    // Transition depth image to DEPTH_STENCIL_READ_ONLY_OPTIMAL for final pass
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pDepthImage->getImage(),
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        targetDepthLayout,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
     );
 
     // **Transition Swapchain Image for Final Pass**
@@ -592,7 +649,6 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
             VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             VK_IMAGE_ASPECT_COLOR_BIT
         );
-
     }
 
     // **Final Rendering Pass**
@@ -626,7 +682,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
             m_pFinalPipeline->getPipelineLayout(),
             0,
             1,
-            &m_pDescriptorManager->getFinalPassDescriptorSet(), // Updated
+            &m_pDescriptorManager->getFinalPassDescriptorSets()[m_currentFrame],
             0,
             nullptr
         );
@@ -654,12 +710,12 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         VK_IMAGE_ASPECT_COLOR_BIT
     );
 
-
     // End command buffer recording
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("Failed to record command buffer!");
     }
 }
+
 
 void Renderer::drawFrame()
 {
@@ -769,7 +825,7 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
 
     // Create or update the camera
     static Camera camera(m_pWindow->getGLFWwindow(),
-        glm::vec3(0.0f, 0.0f, 3.0f), // Camera position
+        glm::vec3(0.0f, 0.0f, 0.3f), // Camera position
         glm::vec3(0.0f, 1.0f, 0.0f), // World up vector (Y-up)
         0.0f, 0.0f);               // Initial yaw and pitch
 
@@ -780,12 +836,14 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     m_UniformBufferObject.proj = glm::perspective(
         glm::radians(45.0f),
         m_pSwapChain->getExtent().width / (float)m_pSwapChain->getExtent().height,
-        0.1f,
-        10000.0f);
+        0.001f,
+        100.0f);
     m_UniformBufferObject.proj[1][1] *= -1;
 
     // Set the camera position
     m_UniformBufferObject.cameraPosition = camera.getPosition(); // Assuming Camera has a getPosition() method
+
+	m_UniformBufferObject.viewportSize = glm::vec2(m_pSwapChain->getExtent().width, m_pSwapChain->getExtent().height);
 
     // Map the uniform buffer and copy the data
     void* data = m_pUniformBuffers[currentImage]->map();
@@ -794,7 +852,7 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
 
 
 
-void Renderer::recreateSwapChain() 
+void Renderer::recreateSwapChain()
 {
     int width = 0, height = 0;
     m_pWindow->getFramebufferSize(width, height);
@@ -815,12 +873,25 @@ void Renderer::recreateSwapChain()
         .setHeight(height)
         .setGraphicsFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value())
         .setPresentFamilyIndex(m_pPhysicalDevice->getQueueFamilyIndices().presentFamily.value())
-		.setImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        .setImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         .build();
 
-	createGBuffer();
-    //createDepthResources();
-    //createFramebuffers();
+    createGBuffer();
+
+    // Update descriptor sets for the final pass with per-frame G-buffers
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        m_pDescriptorManager->updateFinalPassDescriptorSet(
+            i,
+            m_GBuffers[i].diffuseImageView,
+            m_GBuffers[i].normalImageView,
+            m_GBuffers[i].metallicRoughnessImageView,
+            m_GBuffers[i].depthImageView,
+            m_pUniformBuffers[i]->get(),
+            sizeof(UniformBufferObject),
+            Texture::getTextureSampler()
+        );
+    }
 }
 
 void Renderer::transitionImageLayout(
@@ -860,84 +931,105 @@ void Renderer::transitionImageLayout(
 
 void Renderer::createGBuffer()
 {
-    // Create diffuse image
-	m_GBuffer.pDiffuseImage = new Image(m_pDevice, m_VmaAllocator);
-    m_GBuffer.pDiffuseImage->createImage(
-        m_pSwapChain->getExtent().width,
-        m_pSwapChain->getExtent().height,
-        VK_FORMAT_R8G8B8A8_SRGB,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY
-    );
+    m_GBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-    m_GBuffer.pDiffuseImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R8G8B8A8_SRGB,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    );
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        // Create diffuse image
+        m_GBuffers[i].pDiffuseImage = new Image(m_pDevice, m_VmaAllocator);
+        m_GBuffers[i].pDiffuseImage->createImage(m_pSwapChain->getExtent().width,
+            m_pSwapChain->getExtent().height,
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+        m_GBuffers[i].diffuseImageView = m_GBuffers[i].pDiffuseImage->createImageView(
+            VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
-    m_GBuffer.diffuseImageView = m_GBuffer.pDiffuseImage->createImageView(VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);   
+        m_GBuffers[i].pDiffuseImage->transitionImageLayout(m_pCommandPool,
+            m_pDevice->getGraphicsQueue(),
+            VK_FORMAT_R8G8B8A8_SRGB,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+          
+        // Create normal image
+        m_GBuffers[i].pNormalImage = new Image(m_pDevice, m_VmaAllocator);
+        m_GBuffers[i].pNormalImage->createImage(m_pSwapChain->getExtent().width,
+            m_pSwapChain->getExtent().height,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+        m_GBuffers[i].normalImageView = m_GBuffers[i].pNormalImage->createImageView(
+            VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
-    // Create specular image
-    m_GBuffer.pSpecularImage = new Image(m_pDevice, m_VmaAllocator);
-    m_GBuffer.pSpecularImage->createImage(
-        m_pSwapChain->getExtent().width,
-        m_pSwapChain->getExtent().height,
-        VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY
-    );
+		m_GBuffers[i].pNormalImage->transitionImageLayout(m_pCommandPool,
+			m_pDevice->getGraphicsQueue(),
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    m_GBuffer.specularImageView = m_GBuffer.pSpecularImage->createImageView(VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+        // Create metallic-roughness image
+        m_GBuffers[i].pMetallicRougnessImage = new Image(m_pDevice, m_VmaAllocator);
+        m_GBuffers[i].pMetallicRougnessImage->createImage(m_pSwapChain->getExtent().width,
+            m_pSwapChain->getExtent().height,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+        m_GBuffers[i].metallicRoughnessImageView = m_GBuffers[i].pMetallicRougnessImage->createImageView(
+            VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
-    // Create depth image
-    VkFormat depthFormat = findDepthFormat();
-    m_GBuffer.pDepthImage = new Image(m_pDevice, m_VmaAllocator);
-    m_GBuffer.pDepthImage->createImage(
-        m_pSwapChain->getExtent().width,
-        m_pSwapChain->getExtent().height,
-        depthFormat,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY
-    );
+		m_GBuffers[i].pMetallicRougnessImage->transitionImageLayout(m_pCommandPool,
+			m_pDevice->getGraphicsQueue(),
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    m_GBuffer.depthImageView = m_GBuffer.pDepthImage->createImageView(depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+        // Create depth image
+        VkFormat depthFormat = findDepthFormat();
+        m_GBuffers[i].pDepthImage = new Image(m_pDevice, m_VmaAllocator);
+        m_GBuffers[i].pDepthImage->createImage(m_pSwapChain->getExtent().width,
+            m_pSwapChain->getExtent().height,
+            depthFormat,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+        m_GBuffers[i].depthImageView = m_GBuffers[i].pDepthImage->createImageView(
+            depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-    // Transition the depth image layout
-    m_GBuffer.pDepthImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        depthFormat,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    );
-
+        m_GBuffers[i].pDepthImage->transitionImageLayout(m_pCommandPool,
+            m_pDevice->getGraphicsQueue(),
+            depthFormat,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+    }
 }
 
 
-
-void Renderer::cleanupSwapChain() 
+void Renderer::cleanupSwapChain()
 {
-    vkDestroyImageView(m_pDevice->get(), m_GBuffer.depthImageView, nullptr);
-    delete m_GBuffer.pDepthImage;
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].depthImageView, nullptr);
+        delete m_GBuffers[i].pDepthImage;
 
-	vkDestroyImageView(m_pDevice->get(), m_GBuffer.diffuseImageView, nullptr);
-	delete m_GBuffer.pDiffuseImage;
-	
-    vkDestroyImageView(m_pDevice->get(), m_GBuffer.specularImageView, nullptr);
-	delete m_GBuffer.pSpecularImage;
+        vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].diffuseImageView, nullptr);
+        delete m_GBuffers[i].pDiffuseImage;
 
-    /*for (auto framebuffer : m_SwapChainFramebuffers) {
-        vkDestroyFramebuffer(m_pDevice->get(), framebuffer, nullptr);
-    }*/
+        vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].normalImageView, nullptr);
+        delete m_GBuffers[i].pNormalImage;
+
+        vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].metallicRoughnessImageView, nullptr);
+        delete m_GBuffers[i].pMetallicRougnessImage;
+    }
+
+    // Clear the vector
+    m_GBuffers.clear();
 
     delete m_pSwapChain;
 }
+
 
 void Renderer::cleanup() 
 {
