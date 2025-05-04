@@ -42,13 +42,13 @@ public:
 private:
     void initVulkan();
     void createVmaAllocator();
-    //void createDepthResources();
-    //void createFramebuffers();
     void createGBuffer();
     void createUniformBuffers();
+	void createLightBuffer();
     void createCommandBuffers();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void updateUniformBuffer(uint32_t currentImage);
+	void updateLightBuffer(uint32_t currentImage);
     void recreateSwapChain();
     void cleanupSwapChain();
 
@@ -73,10 +73,6 @@ private:
         alignas(16) glm::mat4 proj;
 		alignas(16) glm::vec3 cameraPosition;
 		alignas(16) glm::vec2 viewportSize;
-		alignas(16) glm::vec3 lightPosition; // Instead of hardcoding it
-		alignas(16) glm::vec3 lightColor;
-		alignas(16) float lightIntensity;
-		alignas(16) float lightRadius;
     };
 
     struct GBuffer
@@ -94,6 +90,14 @@ private:
 		VkImageView depthImageView;
     };
 
+	struct Light
+	{
+		alignas(16) glm::vec3 position;
+        alignas(16) glm::vec3 color;
+		alignas(4) float intensity;
+        alignas(4) float radius;
+	};
+
     Window* m_pWindow;
 
     // Vulkan components
@@ -102,7 +106,6 @@ private:
     PhysicalDevice* m_pPhysicalDevice;
     Device* m_pDevice;
     SwapChain* m_pSwapChain;
-    //RenderPass* m_pRenderPass;
     DescriptorManager* m_pDescriptorManager;
     GraphicsPipeline* m_pGraphicsPipeline;
 	GraphicsPipeline* m_pDepthPipeline;
@@ -111,19 +114,20 @@ private:
     SynchronizationObjects* m_pSyncObjects;
 
     // Resources
-    //Texture* m_pTexture;
     Model* m_pModel;
     std::vector<Buffer*> m_pUniformBuffers;
     std::vector<VkCommandBuffer> m_CommandBuffers;
-    //std::vector<VkFramebuffer> m_SwapChainFramebuffers;
     VmaAllocator m_VmaAllocator = nullptr;
 
     uint32_t m_currentFrame = 0;
 
-    const int MAX_FRAMES_IN_FLIGHT = 2;
+    static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+    static constexpr int MAX_LIGHT_COUNT = 10;
 
     UniformBufferObject m_UniformBufferObject{};
     std::vector<GBuffer> m_GBuffers;
+	std::vector<Light> m_Lights;
+	std::vector<Buffer*> m_pLightBuffers;
 
     // Paths
     const std::string MODEL_PATH_ = "models/Sponza/glTF/Sponza.gltf";

@@ -15,13 +15,19 @@ layout(binding = 4) uniform UBO {
     vec2 viewportSize;
 } ubo;
 
-const float PI = 3.14159265359;
+struct Light {
+    vec3 position;
+    vec3 color;
+    float intensity;
+    float radius;
+};
 
-// Hardcoded omni light properties
-const vec3 lightPosition = vec3(0.0, 0.3, 0.0);
-const vec3 lightColor = vec3(1.0, 0.2, 0.2);
-const float lightIntensity = 2.0;
-const float lightRadius = 2.0;
+layout(std430,binding = 5) buffer LightsBuffer {
+    uint lightCount;
+    Light lights[];
+};
+
+const float PI = 3.14159265359;
 
 // Debug visualization mode - switch between different tests
 #define DEBUG_MODE 0  // 0=normal render, 1=world pos, 2=debug view
@@ -148,10 +154,24 @@ vec3 visualizeWorldSpaceGrid(vec3 worldPos)
     if (distToOrigin < 0.1)
         return vec3(1.0); // White at origin
         
-    // Add distance to light indication
-    float lightDist = length(worldPos - lightPosition);
-    if (lightDist < 0.2)
-        return vec3(1.0, 1.0, 0.0); // Yellow at light position
+    // Add distance to light indication - now visualize closest light
+    if (lightCount > 0) {
+        // Find closest light
+        float minDist = 1000.0;
+        int closestLightIndex = 0;
+        
+        for (uint i = 0; i < lightCount; i++) {
+            float lightDist = length(worldPos - lights[i].position);
+            if (lightDist < minDist) {
+                minDist = lightDist;
+                closestLightIndex = int(i);
+            }
+        }
+        
+        float lightDist = length(worldPos - lights[closestLightIndex].position);
+        if (lightDist < 0.2)
+            return lights[closestLightIndex].color; // Show light color at light position
+    }
         
     return color;
 }
@@ -180,34 +200,39 @@ void main()
     vec3 finalColor;
     
     if (DEBUG_MODE == 0) {
-        // Standard PBR lighting - unmodified from your original shader
+        // Standard PBR lighting - now using lights array from binding 5
         vec3 V = normalize(ubo.cameraPosition - worldPos);
         vec3 F0 = vec3(0.04); 
         F0 = mix(F0, albedo, metallic);
         
         vec3 Lo = vec3(0.0);
         
-        vec3 L = normalize(lightPosition - worldPos);
-        float distance = length(lightPosition - worldPos);
-        float attenuation = calculateAttenuation(distance, lightRadius);
-        vec3 radiance = lightColor * lightIntensity * attenuation;
-        
-        vec3 H = normalize(V + L);
-        
-        float NDF = DistributionGGX(N, H, roughness);
-        float G   = GeometrySmith(N, V, L, roughness);
-        vec3 F    = FresnelSchlick(max(dot(H, V), 0.0), F0);
-        
-        vec3 kS = F;
-        vec3 kD = vec3(1.0) - kS;
-        kD *= 1.0 - metallic;
-        
-        vec3 numerator    = NDF * G * F;
-        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-        vec3 specular     = numerator / denominator;
-        
-        float NdotL = max(dot(N, L), 0.0);
-        Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+        // Process all lights in the light buffer
+        for (uint i = 0; i < lightCount; i++) {
+            Light light = lights[i];
+            
+            vec3 L = normalize(light.position - worldPos);
+            float distance = length(light.position - worldPos);
+            float attenuation = calculateAttenuation(distance, light.radius);
+            vec3 radiance = light.color * light.intensity * attenuation;
+            
+            vec3 H = normalize(V + L);
+            
+            float NDF = DistributionGGX(N, H, roughness);
+            float G   = GeometrySmith(N, V, L, roughness);
+            vec3 F    = FresnelSchlick(max(dot(H, V), 0.0), F0);
+            
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+            kD *= 1.0 - metallic;
+            
+            vec3 numerator    = NDF * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+            vec3 specular     = numerator / denominator;
+            
+            float NdotL = max(dot(N, L), 0.0);
+            Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+        }
         
         vec3 ambient = vec3(0.03) * albedo;
         
@@ -224,10 +249,15 @@ void main()
             finalColor = camPosNormalized;
         }
         
-        // Show light position in opposite corner
+        // Show light count and first light position in opposite corner
         if (fragTexCoord.x > 0.8 && fragTexCoord.y < 0.1) {
-            vec3 lightPosNormalized = normalize(lightPosition) * 0.5 + 0.5;
-            finalColor = lightPosNormalized;
+            if (lightCount > 0) {
+                vec3 lightPosNormalized = normalize(lights[0].position) * 0.5 + 0.5;
+                finalColor = lightPosNormalized;
+            } else {
+                // Red if no lights
+                finalColor = vec3(1.0, 0.0, 0.0);
+            }
         }
     }
     else if (DEBUG_MODE == 2) {
@@ -254,6 +284,12 @@ void main()
         float lineWidth = 0.005;
         if (abs(fragTexCoord.x - 0.5) < lineWidth || abs(fragTexCoord.y - 0.5) < lineWidth) {
             finalColor = vec3(1.0);
+        }
+        
+        // Show light count in bottom right corner
+        if (fragTexCoord.x > 0.9 && fragTexCoord.y > 0.9) {
+            // Visualize number of lights (green for lights, red for no lights)
+            finalColor = lightCount > 0 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
         }
     }
     

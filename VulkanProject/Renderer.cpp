@@ -123,6 +123,18 @@ void Renderer::initVulkan()
 
 	createGBuffer();
 
+    createLightBuffer();
+
+	m_Lights.push_back(Light{ glm::vec3(0.0f, 0.2f, 0.0f), glm::vec3(1.0f, 0.3f, 0.3f), 0.5f, 2.0f });
+	m_Lights.push_back(Light{ glm::vec3(1.0f, 0.2f, 0.0f), glm::vec3(0.2f, 1.0f, 0.2f), 1.0f, 4.0f });
+    m_Lights.push_back(Light{ glm::vec3(2.0f, 0.2f, 0.0f), glm::vec3(0.3f, 0.3f, 1.f), 2.0f, 6.0f });
+    m_Lights.push_back(Light{ glm::vec3(3.0f, 0.2f, 0.0f), glm::vec3(1.f, 1.f, 0.2f), 4.0f, 8.0f });
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+		updateLightBuffer(i);
+    }
+
     m_pModel = new Model(m_VmaAllocator, m_pDevice, m_pPhysicalDevice, m_pCommandPool, MODEL_PATH_);
     m_pModel->loadModel();
 
@@ -167,6 +179,8 @@ void Renderer::initVulkan()
             m_GBuffers[frameIndex].depthImageView,
             m_pUniformBuffers[frameIndex]->get(),
             sizeof(UniformBufferObject),
+			m_pLightBuffers[frameIndex]->get(),
+			sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t),
             Texture::getTextureSampler() // Ensure this sampler is created
         );
     }
@@ -220,14 +234,6 @@ void Renderer::initVulkan()
         .build();
 
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
-// const vec3 lightPosition = vec3(0.0, 2.0, 0.0);  // Position in world space
-// const vec3 lightColor = vec3(1.0, 0.9, 0.7);     // Warm white color
-// const float lightIntensity = 1.0;                // Higher intensity for point light
-// const float lightRadius = 10.0;                  // Controls light falloff distance
-	m_UniformBufferObject.lightPosition = glm::vec3(0.0f, 2.0f, 0.0f); // Position in world space
-	m_UniformBufferObject.lightColor = glm::vec3(1.0f, 0.9f, 0.7f);    // Warm white color
-	m_UniformBufferObject.lightIntensity = 1.0f;                // Higher intensity for point light
-	m_UniformBufferObject.lightRadius = 10.0f;                  // Controls light falloff distance
 }
 
 void Renderer::createVmaAllocator() 
@@ -277,6 +283,23 @@ void Renderer::createUniformBuffers()
             m_VmaAllocator,
             bufferSize,
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_CPU_TO_GPU,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+            VMA_ALLOCATION_CREATE_MAPPED_BIT
+        );
+    }
+}
+
+void Renderer::createLightBuffer()
+{
+    VkDeviceSize bufferSize = sizeof(uint32_t) + sizeof(Light) * MAX_LIGHT_COUNT;
+	m_pLightBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        m_pLightBuffers[i] = new Buffer(
+            m_VmaAllocator,
+            bufferSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VMA_MEMORY_USAGE_CPU_TO_GPU,
             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
             VMA_ALLOCATION_CREATE_MAPPED_BIT
@@ -850,6 +873,21 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     memcpy(data, &m_UniformBufferObject, sizeof(m_UniformBufferObject));
 }
 
+void Renderer::updateLightBuffer(uint32_t currentImage)
+{
+    struct LightsBuffer {
+        uint32_t lightCount;
+        Light lights[MAX_LIGHT_COUNT];
+    } lightsBufferData;
+
+    lightsBufferData.lightCount = static_cast<uint32_t>(m_Lights.size());
+    memcpy(lightsBufferData.lights, m_Lights.data(), sizeof(Light) * m_Lights.size());
+
+    void* data = m_pLightBuffers[currentImage]->map();
+    memcpy(data, &lightsBufferData, sizeof(lightsBufferData));
+    m_pLightBuffers[currentImage]->unmap();
+}
+
 
 
 void Renderer::recreateSwapChain()
@@ -889,6 +927,8 @@ void Renderer::recreateSwapChain()
             m_GBuffers[i].depthImageView,
             m_pUniformBuffers[i]->get(),
             sizeof(UniformBufferObject),
+            m_pLightBuffers[i]->get(),
+            (sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t)),
             Texture::getTextureSampler()
         );
     }
@@ -1039,6 +1079,9 @@ void Renderer::cleanup()
     for (auto& uniformBuffer : m_pUniformBuffers) {
         delete uniformBuffer;
     }
+	for (auto& lightBuffer : m_pLightBuffers) {
+		delete lightBuffer;
+	}
 
     delete m_pDescriptorManager;
     delete m_pModel;

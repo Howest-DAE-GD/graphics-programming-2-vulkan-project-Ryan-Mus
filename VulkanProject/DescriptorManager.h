@@ -28,6 +28,8 @@ public:
         VkImageView depthImageView,
         VkBuffer uniformBuffer,
         size_t uniformBufferObjectSize,
+		VkBuffer lightBuffer,
+		size_t lightBufferObjectSize,
         VkSampler sampler
     );
 
@@ -39,6 +41,8 @@ public:
         VkImageView depthImageView,
         VkBuffer uniformBuffer,
         size_t uniformBufferObjectSize,
+        VkBuffer lightBuffer,
+        size_t lightBufferObjectSize,
         VkSampler sampler
     );
 

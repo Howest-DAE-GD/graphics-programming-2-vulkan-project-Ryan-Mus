@@ -99,7 +99,10 @@ void DescriptorManager::createDescriptorPool()
 
           // Total combined image samplers (main pass + final pass)
           { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount * 3 + 4)) }
+            static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount * 3 + 4)) },
+
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            static_cast<uint32_t>(20)}
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -270,7 +273,15 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT; // Allow usage in both shaders
     uboLayoutBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 5> bindings = { diffuseBinding, normalBinding, metallicRoughnessBinding, depthBinding, uboLayoutBinding};
+	// Binding for light buffer (binding = 5)
+	VkDescriptorSetLayoutBinding lightBufferBinding{};
+	lightBufferBinding.binding = 5;
+	lightBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	lightBufferBinding.descriptorCount = 1;
+	lightBufferBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	lightBufferBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 6> bindings = { diffuseBinding, normalBinding, metallicRoughnessBinding, depthBinding, uboLayoutBinding, lightBufferBinding};
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -296,6 +307,8 @@ void DescriptorManager::createFinalPassDescriptorSet(
     VkImageView depthImageView,
     VkBuffer uniformBuffer,
     size_t uniformBufferObjectSize,
+    VkBuffer lightBuffer,
+    size_t lightBufferObjectSize,
     VkSampler sampler)
 {
     // Allocate the descriptor set
@@ -336,7 +349,12 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	bufferInfo.offset = 0;
 	bufferInfo.range = uniformBufferObjectSize;
 
-    std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
+	VkDescriptorBufferInfo lightBufferInfo{};
+	lightBufferInfo.buffer = lightBuffer;
+	lightBufferInfo.offset = 0;
+	lightBufferInfo.range = lightBufferObjectSize;
+
+    std::array<VkWriteDescriptorSet, 6> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -373,6 +391,13 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	descriptorWrites[4].descriptorCount = 1;
 	descriptorWrites[4].pBufferInfo = &bufferInfo;
 
+	descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[5].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[5].dstBinding = 5;
+	descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	descriptorWrites[5].descriptorCount = 1;
+	descriptorWrites[5].pBufferInfo = &lightBufferInfo;
+
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
@@ -389,6 +414,8 @@ void DescriptorManager::updateFinalPassDescriptorSet(
     VkImageView depthImageView,
     VkBuffer uniformBuffer,
     size_t uniformBufferObjectSize,
+    VkBuffer lightBuffer,
+    size_t lightBufferObjectSize,
     VkSampler sampler)
 {
     // Update the descriptor set with the new G-Buffer images
@@ -417,7 +444,12 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	bufferInfo.offset = 0;
 	bufferInfo.range = uniformBufferObjectSize;
 
-    std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
+	VkDescriptorBufferInfo lightBufferInfo{};
+	lightBufferInfo.buffer = lightBuffer;
+	lightBufferInfo.offset = 0;
+	lightBufferInfo.range = lightBufferObjectSize;
+
+    std::array<VkWriteDescriptorSet, 6> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -453,6 +485,13 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	descriptorWrites[4].descriptorCount = 1;
 	descriptorWrites[4].pBufferInfo = &bufferInfo;
+
+	descriptorWrites[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[5].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[5].dstBinding = 5;
+	descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	descriptorWrites[5].descriptorCount = 1;
+	descriptorWrites[5].pBufferInfo = &lightBufferInfo;
 
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
