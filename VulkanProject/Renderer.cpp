@@ -841,7 +841,7 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     m_UniformBufferObject.proj[1][1] *= -1;
 
     // Set the camera position
-    m_UniformBufferObject.cameraPosition = camera.getPosition(); // Assuming Camera has a getPosition() method
+    m_UniformBufferObject.cameraPosition = camera.getPosition();
 
 	m_UniformBufferObject.viewportSize = glm::vec2(m_pSwapChain->getExtent().width, m_pSwapChain->getExtent().height);
 
