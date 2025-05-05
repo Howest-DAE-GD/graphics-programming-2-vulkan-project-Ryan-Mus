@@ -22,7 +22,7 @@ struct Light {
     float radius;
 };
 
-layout(std430,binding = 5) buffer LightsBuffer {
+layout(std430,binding = 5) readonly buffer LightsBuffer {
     uint lightCount;
     Light lights[];
 };
@@ -237,7 +237,7 @@ void main()
         vec3 ambient = vec3(0.03) * albedo;
         
         finalColor = ambient + Lo;
-        finalColor = ACESFilm(finalColor);
+        //finalColor = ACESFilm(finalColor);
     }
     else if (DEBUG_MODE == 1) {
         // World position visualization with grid

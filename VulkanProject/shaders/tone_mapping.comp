@@ -1,0 +1,83 @@
+﻿#version 450
+
+layout(binding = 0, rgba32f) uniform readonly image2D inputImage;
+layout(binding = 1, rgba8) uniform writeonly image2D outputImage;
+layout(binding = 2) uniform sampler imageSampler;
+     
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// ACES tone mapping constants
+const float A = 2.51f;
+const float B = 0.03f;
+const float C = 2.43f;
+const float D = 0.59f;
+const float E = 0.14f;
+
+// -------- CAMERA SETTINGS --------
+//#define SUNNY_16
+#define INDOOR
+//#define EV1
+//#define EV_NEG4
+
+#ifdef SUNNY_16
+    const float aperture     = 5.0f;
+    const float ISO          = 100.0f;
+    const float shutterSpeed = 1.0f / 200.0f;
+#endif
+
+#ifdef INDOOR
+    const float aperture     = 1.4f;
+    const float ISO          = 1600.0f;
+    const float shutterSpeed = 1.0f / 60.0f;
+#endif
+
+#ifdef EV1
+    const float aperture     = 1.0f;
+    const float ISO          = 100.0f;
+    const float shutterSpeed = 1.0f / 2.0f;
+#endif
+
+#ifdef EV_NEG4
+    const float aperture     = 1.0f;
+    const float ISO          = 100.0f;
+    const float shutterSpeed = 1.0f / (2.0f / pow(2.0f, -4.0f));  // ≈ 16 sec
+#endif
+
+// -------- Exposure Utilities --------
+float CalculateEV100FromPhysicalCamera(in float aperture, in float shutterTime, in float ISO)
+{
+    // EV100 = log2((aperture^2) / shutter * 100 / ISO)
+    return log2(pow(aperture, 2.0) / shutterTime * (100.0 / ISO));
+}
+
+float ConvertEV100ToExposure(in float EV100)
+{
+    // Based on Lagarde's implementation
+    const float maxLuminance = 1.2f * pow(2.0f, EV100);
+    return 1.0f / max(maxLuminance, 0.0001f);  // Prevent divide-by-zero
+}
+
+// -------- ACES Tone Mapping --------
+vec3 ACESFilm(vec3 x)
+{
+    return clamp((x * (A * x + B)) / (x * (C * x + D) + E), 0.0, 1.0);
+}
+
+void main()
+{
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageSize = imageSize(inputImage);
+    if (texelCoord.x >= imageSize.x || texelCoord.y >= imageSize.y)
+        return;
+
+    vec4 inputColor = imageLoad(inputImage, texelCoord);
+
+    float EV100     = CalculateEV100FromPhysicalCamera(aperture, shutterSpeed, ISO);
+    float exposure  = ConvertEV100ToExposure(EV100);
+
+    vec3 exposedColor = inputColor.rgb * exposure;
+    vec3 mappedColor = ACESFilm(exposedColor);
+
+    imageStore(outputImage, texelCoord, vec4(mappedColor, inputColor.a));
+}

@@ -12,6 +12,7 @@
 #include "RenderPass.h"
 #include "GraphicsPipeline.h"
 #include "GraphicsPipelineBuilder.h"
+#include "ComputePipelineBuilder.h"
 #include "SynchronizationObjects.h"
 #include "CommandPool.h"
 #include "DescriptorManager.h"
@@ -43,6 +44,8 @@ private:
     void initVulkan();
     void createVmaAllocator();
     void createGBuffer();
+	void createHDRImage();
+	void createLDRImage();
     void createUniformBuffers();
 	void createLightBuffer();
     void createCommandBuffers();
@@ -51,6 +54,7 @@ private:
 	void updateLightBuffer(uint32_t currentImage);
     void recreateSwapChain();
     void cleanupSwapChain();
+	void blitLDRToSwapchain(uint32_t imageIndex, VkCommandBuffer commandBuffer);
 
     // Helper functions
     VkFormat findDepthFormat();
@@ -65,6 +69,19 @@ private:
         VkAccessFlags2 srcAccessMask,
         VkAccessFlags2 dstAccessMask,
 		VkImageAspectFlags aspectMask);
+
+    void transitionImageLayout(
+        VkCommandBuffer commandBuffer,
+        Image* pImage,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout,
+        VkPipelineStageFlags2 srcStageMask,
+        VkPipelineStageFlags2 dstStageMask,
+        VkAccessFlags2 srcAccessMask,
+        VkAccessFlags2 dstAccessMask,
+        VkImageAspectFlags aspectMask);
+
+    void transitionSwapchainImagesToPresentLayout();
 
     struct UniformBufferObject
     {
@@ -110,6 +127,7 @@ private:
     GraphicsPipeline* m_pGraphicsPipeline;
 	GraphicsPipeline* m_pDepthPipeline;
 	GraphicsPipeline* m_pFinalPipeline;
+	ComputePipeline* m_pToneMappingPipeline;
     CommandPool* m_pCommandPool;
     SynchronizationObjects* m_pSyncObjects;
 
@@ -129,6 +147,12 @@ private:
 	std::vector<Light> m_Lights;
 	std::vector<Buffer*> m_pLightBuffers;
 
+	std::vector<Image*> m_pHDRImage;
+	std::vector<VkImageView> m_HDRImageView;
+
+	std::vector<Image*> m_pLDRImage;
+	std::vector<VkImageView> m_LDRImageView;
+
     // Paths
-    const std::string MODEL_PATH_ = "models/Sponza/glTF/Sponza.gltf";
+    const std::string MODEL_PATH_ = "models/glTF/Sponza.gltf";
 };

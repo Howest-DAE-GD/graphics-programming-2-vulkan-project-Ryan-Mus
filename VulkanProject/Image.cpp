@@ -146,6 +146,8 @@ void Image::transitionImageLayout(CommandPool* commandPool, VkQueue graphicsQueu
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 
     commandPool->endSingleTimeCommands(commandBuffer, graphicsQueue);
+
+	setImageLayout(newLayout);
 }
 
 

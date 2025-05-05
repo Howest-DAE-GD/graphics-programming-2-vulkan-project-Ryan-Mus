@@ -116,19 +116,22 @@ void Renderer::initVulkan()
         .setImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT) // Add VK_IMAGE_USAGE_TRANSFER_DST_BIT
         .build();
 
-
     //m_pRenderPass = new RenderPass(m_pDevice->get(), m_pSwapChain->getImageFormat(), findDepthFormat());
     createVmaAllocator();
     m_pCommandPool = new CommandPool(m_pDevice->get(), m_pPhysicalDevice->getQueueFamilyIndices().graphicsFamily.value());
 
 	createGBuffer();
 
+	createHDRImage();
+
+	createLDRImage();
+
     createLightBuffer();
 
 	m_Lights.push_back(Light{ glm::vec3(0.0f, 0.2f, 0.0f), glm::vec3(1.0f, 0.3f, 0.3f), 0.5f, 2.0f });
 	m_Lights.push_back(Light{ glm::vec3(1.0f, 0.2f, 0.0f), glm::vec3(0.2f, 1.0f, 0.2f), 1.0f, 4.0f });
     m_Lights.push_back(Light{ glm::vec3(2.0f, 0.2f, 0.0f), glm::vec3(0.3f, 0.3f, 1.f), 2.0f, 6.0f });
-    m_Lights.push_back(Light{ glm::vec3(3.0f, 0.2f, 0.0f), glm::vec3(1.f, 1.f, 0.2f), 4.0f, 8.0f });
+    m_Lights.push_back(Light{ glm::vec3(6.0f, 0.2f, 0.0f), glm::vec3(1.f, 1.f, 0.2f), 20.0f, 8.0f });
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -144,6 +147,7 @@ void Renderer::initVulkan()
     // Create descriptor set layouts and pools    
     m_pDescriptorManager->createDescriptorSetLayout();
     m_pDescriptorManager->createFinalPassDescriptorSetLayout();
+	m_pDescriptorManager->createComputeDescriptorSetLayout();
 
     m_pDescriptorManager->createDescriptorPool();
 
@@ -185,6 +189,16 @@ void Renderer::initVulkan()
         );
     }
 
+	// Create descriptor set for the compute pass
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        m_pDescriptorManager->createComputeDescriptorSet(
+			i,
+			m_HDRImageView[i],
+			m_LDRImageView[i],
+			Texture::getTextureSampler()
+		);
+    }
 
     createCommandBuffers();
 
@@ -223,7 +237,7 @@ void Renderer::initVulkan()
         .setDevice(m_pDevice->get())
         .setDescriptorSetLayout(m_pDescriptorManager->getFinalPassDescriptorSetLayout()) // Updated
         .setSwapChainExtent(m_pSwapChain->getExtent())
-        .setColorFormats({ m_pSwapChain->getImageFormat() })
+        .setColorFormats({ VK_FORMAT_R32G32B32A32_SFLOAT })
         .setDepthFormat(VK_FORMAT_UNDEFINED)
         .setVertexInputBindingDescription({})
         .setVertexInputAttributeDescriptions({})
@@ -233,7 +247,15 @@ void Renderer::initVulkan()
         .setRasterizationState(VK_CULL_MODE_NONE)
         .build();
 
+	m_pToneMappingPipeline = ComputePipelineBuilder()
+		.setDevice(m_pDevice)
+		.setShaderPath("shaders/tone_mapping.comp.spv")
+		.setDescriptorSetLayout(m_pDescriptorManager->getComputeDescriptorSetLayout())
+		.build();
+
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
+
+    transitionSwapchainImagesToPresentLayout();
 }
 
 void Renderer::createVmaAllocator() 
@@ -658,29 +680,26 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         VK_IMAGE_ASPECT_DEPTH_BIT
     );
 
-    // **Transition Swapchain Image for Final Pass**
-    {
-        // Transition swapchain image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
-        transitionImageLayout(
-            commandBuffer,
-            m_pSwapChain->getImages()[imageIndex],
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_ACCESS_2_NONE,
-            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-            VK_IMAGE_ASPECT_COLOR_BIT
-        );
-    }
+	// Transition HDR image to write layout for tone mapping
+	transitionImageLayout(
+		commandBuffer,
+		m_pHDRImage[m_currentFrame],
+		m_pHDRImage[m_currentFrame]->getImageLayout(),
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+		VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+		VK_ACCESS_2_SHADER_READ_BIT,
+		VK_ACCESS_2_SHADER_WRITE_BIT,
+		VK_IMAGE_ASPECT_COLOR_BIT
+	);   
 
     // **Final Rendering Pass**
     {
         // Begin final rendering pass to the swapchain image
         VkRenderingAttachmentInfo colorAttachment{};
         colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        colorAttachment.imageView = m_pSwapChain->getImageViews()[imageIndex];
-        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.imageView = m_HDRImageView[m_currentFrame];
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachment.clearValue = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -720,18 +739,56 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         vkCmdEndRendering(commandBuffer);
     }
 
-    // Transition swapchain image to PRESENT_SRC_KHR for presentation
+    // Transition HDR image to GENERAL layout for compute shader read
     transitionImageLayout(
         commandBuffer,
-        m_pSwapChain->getImages()[imageIndex],
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        m_pHDRImage[m_currentFrame],
+        m_pHDRImage[m_currentFrame]->getImageLayout(),
+        VK_IMAGE_LAYOUT_GENERAL,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_SHADER_READ_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT
     );
+
+    // Transition swapchain image to GENERAL layout for compute shader write
+    transitionImageLayout(
+        commandBuffer,
+        m_pLDRImage[m_currentFrame],
+        m_pLDRImage[m_currentFrame]->getImageLayout(),
+        VK_IMAGE_LAYOUT_GENERAL,
+        VK_PIPELINE_STAGE_2_NONE,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_NONE,
+        VK_ACCESS_2_SHADER_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    // Bind the compute pipeline
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_pToneMappingPipeline->getPipeline());
+
+    // Bind the descriptor set for the compute shader
+    vkCmdBindDescriptorSets(
+        commandBuffer,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        m_pToneMappingPipeline->getPipelineLayout(),
+        0,
+        1,
+        &m_pDescriptorManager->getComputeDescriptorSets()[m_currentFrame],
+        0,
+        nullptr
+    );
+
+    // Dispatch the compute shader
+    uint32_t workgroupSizeX = 16;
+    uint32_t workgroupSizeY = 16;
+    uint32_t dispatchX = (m_pSwapChain->getExtent().width + workgroupSizeX - 1) / workgroupSizeX;
+    uint32_t dispatchY = (m_pSwapChain->getExtent().height + workgroupSizeY - 1) / workgroupSizeY;
+
+    vkCmdDispatch(commandBuffer, dispatchX, dispatchY, 1);
+
+	blitLDRToSwapchain(m_currentFrame, commandBuffer);
 
     // End command buffer recording
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -915,6 +972,8 @@ void Renderer::recreateSwapChain()
         .build();
 
     createGBuffer();
+	createHDRImage();
+	createLDRImage();
 
     // Update descriptor sets for the final pass with per-frame G-buffers
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -968,6 +1027,61 @@ void Renderer::transitionImageLayout(
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
+void Renderer::transitionImageLayout(VkCommandBuffer commandBuffer,
+    Image* pImage,
+    VkImageLayout oldLayout,
+    VkImageLayout newLayout,
+    VkPipelineStageFlags2 srcStageMask,
+    VkPipelineStageFlags2 dstStageMask,
+    VkAccessFlags2 srcAccessMask,
+    VkAccessFlags2 dstAccessMask,
+    VkImageAspectFlags aspectMask)
+{
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcStageMask = srcStageMask;
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstStageMask = dstStageMask;
+    barrier.dstAccessMask = dstAccessMask;
+    barrier.image = pImage->getImage();
+    barrier.subresourceRange.aspectMask = aspectMask;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkDependencyInfo dependencyInfo{};
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.imageMemoryBarrierCount = 1;
+    dependencyInfo.pImageMemoryBarriers = &barrier;
+
+    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+	pImage->setImageLayout(newLayout);
+}
+
+void Renderer::transitionSwapchainImagesToPresentLayout()
+{
+    VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		transitionImageLayout(
+			commandBuffer,
+			m_pSwapChain->getImages()[i],
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_ACCESS_2_NONE,
+			VK_IMAGE_ASPECT_COLOR_BIT
+		);
+	}
+
+    m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+}
 
 void Renderer::createGBuffer()
 {
@@ -1046,6 +1160,58 @@ void Renderer::createGBuffer()
     }
 }
 
+void Renderer::createHDRImage()
+{
+    m_pHDRImage.resize(MAX_FRAMES_IN_FLIGHT);
+    m_HDRImageView.resize(MAX_FRAMES_IN_FLIGHT);
+    for (int i{}; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        m_pHDRImage[i] = new Image(m_pDevice, m_VmaAllocator);
+        m_pHDRImage[i]->createImage(
+            m_pSwapChain->getExtent().width,
+            m_pSwapChain->getExtent().height,
+            VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+        m_HDRImageView[i] = m_pHDRImage[i]->createImageView(
+            VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
+        m_pHDRImage[i]->transitionImageLayout(
+            m_pCommandPool,
+            m_pDevice->getGraphicsQueue(),
+            VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_GENERAL);
+    }
+}
+
+void Renderer::createLDRImage()
+{
+	m_pLDRImage.resize(MAX_FRAMES_IN_FLIGHT);
+	m_LDRImageView.resize(MAX_FRAMES_IN_FLIGHT);
+	for (int i{}; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		m_pLDRImage[i] = new Image(m_pDevice, m_VmaAllocator);
+		m_pLDRImage[i]->createImage(
+			m_pSwapChain->getExtent().width,
+			m_pSwapChain->getExtent().height,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			VMA_MEMORY_USAGE_GPU_ONLY);
+		m_LDRImageView[i] = m_pLDRImage[i]->createImageView(
+			VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+		m_pLDRImage[i]->transitionImageLayout(
+			m_pCommandPool,
+			m_pDevice->getGraphicsQueue(),
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	}
+}
+
 
 void Renderer::cleanupSwapChain()
 {
@@ -1062,12 +1228,89 @@ void Renderer::cleanupSwapChain()
 
         vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].metallicRoughnessImageView, nullptr);
         delete m_GBuffers[i].pMetallicRougnessImage;
+
+		vkDestroyImageView(m_pDevice->get(), m_HDRImageView[i], nullptr);
+		delete m_pHDRImage[i];
+
+		vkDestroyImageView(m_pDevice->get(), m_LDRImageView[i], nullptr);
+		delete m_pLDRImage[i];
     }
 
     // Clear the vector
     m_GBuffers.clear();
 
     delete m_pSwapChain;
+}
+
+void Renderer::blitLDRToSwapchain(uint32_t imageIndex, VkCommandBuffer commandBuffer)
+{
+    // Transition LDR image layout to transfer source
+        // Transition LDR image layout to transfer source
+    transitionImageLayout(
+        commandBuffer,
+        m_pLDRImage[imageIndex],
+        m_pLDRImage[imageIndex]->getImageLayout(),                       // From compute shader
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,          // To transfer source
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,        // After compute shader
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT,              // Before transfer operations
+        VK_ACCESS_2_SHADER_WRITE_BIT,                  // After compute writes
+        VK_ACCESS_2_TRANSFER_READ_BIT,                 // For transfer read
+        VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // **Modified: Transition swapchain image layout to transfer destination**
+    transitionImageLayout(
+        commandBuffer,
+        m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,               // **From present source**
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,          // To transfer destination
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT,              // Using transfer stages
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        VK_ACCESS_2_NONE,                              // No prior access
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,                // For transfer write
+        VK_IMAGE_ASPECT_COLOR_BIT);
+
+
+    // Blit the image
+    VkImageBlit blitRegion{};
+    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.srcSubresource.mipLevel = 0;
+    blitRegion.srcSubresource.baseArrayLayer = 0;
+    blitRegion.srcSubresource.layerCount = 1;
+    blitRegion.srcOffsets[0] = { 0, 0, 0 };
+    blitRegion.srcOffsets[1] = {
+        static_cast<int32_t>(m_pSwapChain->getExtent().width),
+        static_cast<int32_t>(m_pSwapChain->getExtent().height),
+        1
+    };
+    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.dstSubresource.mipLevel = 0;
+    blitRegion.dstSubresource.baseArrayLayer = 0;
+    blitRegion.dstSubresource.layerCount = 1;
+    blitRegion.dstOffsets[0] = { 0, 0, 0 };
+    blitRegion.dstOffsets[1] = {
+        static_cast<int32_t>(m_pSwapChain->getExtent().width),
+        static_cast<int32_t>(m_pSwapChain->getExtent().height),
+        1
+    };
+
+    vkCmdBlitImage(
+        commandBuffer,
+        m_pLDRImage[imageIndex]->getImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        m_pSwapChain->getImages()[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &blitRegion,
+        VK_FILTER_NEAREST); // Use VK_FILTER_LINEAR for smoother scaling if needed
+
+    // Transition swapchain image to present mode
+    transitionImageLayout(
+        commandBuffer,
+        m_pSwapChain->getImages()[imageIndex],
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,          // From transfer destination
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,               // To present source
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT,              // After transfer operations
+        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,        // Before presentation
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,                // After transfer writes
+        0,                                             // No access needed for presentation
+        VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 
@@ -1091,6 +1334,7 @@ void Renderer::cleanup()
     delete m_pGraphicsPipeline;
 	delete m_pDepthPipeline;
 	delete m_pFinalPipeline;
+	delete m_pToneMappingPipeline;
     delete m_pSyncObjects;
     delete m_pCommandPool;
     delete m_pDevice;

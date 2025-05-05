@@ -31,9 +31,13 @@ public:
 		return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 	}
 
+	void setImageLayout(VkImageLayout layout) { m_ImageLayout = layout; }
+	VkImageLayout getImageLayout() const { return m_ImageLayout; }
+
 private:
     Device* m_pDevice;
     VmaAllocator m_Allocator;
     VkImage m_Image;
     VmaAllocation m_Allocation;
+	VkImageLayout m_ImageLayout;
 };

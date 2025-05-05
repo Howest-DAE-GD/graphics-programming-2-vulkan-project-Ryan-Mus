@@ -186,12 +186,26 @@ bool PhysicalDevice::isDeviceSuitable(VkPhysicalDevice device)
 {
     auto indices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
-
     bool swapChainAdequate = false;
+    bool storageImageSupported = false;
+
     if (extensionsSupported)
     {
         auto swapChainSupport = querySwapChainSupport();
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+
+        // Check if swapchain supports storage image usage
+        VkSurfaceCapabilitiesKHR capabilities;
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_Surface, &capabilities);
+        storageImageSupported = (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_STORAGE_BIT);
+
+        // If you want to log this information for debugging:
+        if (storageImageSupported) {
+            spdlog::info("Device supports storage images for swapchain");
+        }
+        else {
+            spdlog::error("Device DOES NOT support storage images for swapchain");
+        }
     }
 
     VkPhysicalDeviceFeatures supportedFeatures;
@@ -204,7 +218,8 @@ bool PhysicalDevice::isDeviceSuitable(VkPhysicalDevice device)
         && extensionsSupported
         && swapChainAdequate
         && supportedFeatures.samplerAnisotropy == m_RequiredFeatures.samplerAnisotropy
-        && deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+        && deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+        && storageImageSupported; // Add storage image support as a requirement
 }
 
 PhysicalDevice::QueueFamilyIndices PhysicalDevice::findQueueFamilies(VkPhysicalDevice device) const

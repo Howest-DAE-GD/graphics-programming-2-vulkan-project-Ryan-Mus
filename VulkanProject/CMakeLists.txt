@@ -63,8 +63,8 @@ FetchContent_MakeAvailable(spdlog)
 # ResourcesVulkan
 FetchContent_Declare(
     resourcesvulkan
-    GIT_REPOSITORY https://github.com/Ryan-Mus/ResourcesVulkan.git
-    GIT_TAG        master
+    GIT_REPOSITORY https://github.com/KarelRoelandt/GP2_Sponza
+    GIT_TAG        v1
     SOURCE_DIR     ${CMAKE_SOURCE_DIR}/models
 )
 FetchContent_MakeAvailable(resourcesvulkan)
@@ -115,7 +115,9 @@ add_executable(VulkanProject
  "Renderer.h" "Renderer.cpp"
  "Camera.h" "Camera.cpp"
  "Material.h" "Material.cpp"
- "Frustum.h" "Frustum.cpp")
+ "Frustum.h" "Frustum.cpp" 
+ "ComputePipelineBuilder.h" "ComputePipelineBuilder.cpp" 
+ "ComputePipeline.h" "ComputePipeline.cpp")
 
 target_include_directories(VulkanProject PRIVATE 
     ${Vulkan_INCLUDE_DIRS} 
@@ -144,7 +146,7 @@ set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
 
 # Find all .vert and .frag files in the shader directory
-file(GLOB SHADER_FILES "${SHADER_DIR}/*.vert" "${SHADER_DIR}/*.frag")
+file(GLOB SHADER_FILES "${SHADER_DIR}/*.vert" "${SHADER_DIR}/*.frag" "${SHADER_DIR}/*.comp")
 
 # Generate output paths for compiled shaders
 set(COMPILED_SHADERS "")

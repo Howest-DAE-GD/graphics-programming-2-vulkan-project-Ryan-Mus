@@ -10,24 +10,27 @@ DescriptorManager::DescriptorManager(VkDevice device, size_t maxFramesInFlight, 
     //createDescriptorSetLayout();
     //createDescriptorPool();
 	m_FinalPassDescriptorSets.resize(maxFramesInFlight); // Initialize the final pass descriptor sets
+	m_ComputeDescriptorSets.resize(maxFramesInFlight); // Initialize the compute descriptor sets
     spdlog::debug("DescriptorManager created.");
 }
 
 DescriptorManager::~DescriptorManager()
 {
+    if (m_DescriptorPool != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
+    }
     if (m_DescriptorSetLayout != VK_NULL_HANDLE)
     {
         vkDestroyDescriptorSetLayout(m_Device, m_DescriptorSetLayout, nullptr);
     }
- 
-	if (m_FinalPassDescriptorSetLayout != VK_NULL_HANDLE)
-	{
-		vkDestroyDescriptorSetLayout(m_Device, m_FinalPassDescriptorSetLayout, nullptr);
-	}
-
-    if (m_DescriptorPool != VK_NULL_HANDLE)
+    if (m_FinalPassDescriptorSetLayout != VK_NULL_HANDLE)
     {
-        vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
+        vkDestroyDescriptorSetLayout(m_Device, m_FinalPassDescriptorSetLayout, nullptr);
+    }
+    if (m_ComputeDescriptorSetLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorSetLayout(m_Device, m_ComputeDescriptorSetLayout, nullptr);
     }
     spdlog::debug("DescriptorManager destroyed.");
 }
@@ -101,8 +104,17 @@ void DescriptorManager::createDescriptorPool()
           { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount * 3 + 4)) },
 
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            static_cast<uint32_t>(20)}
+            // Total storage buffers (e.g., light buffer)
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+              static_cast<uint32_t>(m_MaxFramesInFlight) },
+
+              // Total storage images (compute descriptors)
+              { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                static_cast<uint32_t>(m_MaxFramesInFlight * 2) }, // Input and output images per frame
+
+                // Total samplers (compute descriptors)
+                { VK_DESCRIPTOR_TYPE_SAMPLER,
+                  static_cast<uint32_t>(m_MaxFramesInFlight) }
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -111,13 +123,18 @@ void DescriptorManager::createDescriptorPool()
     poolInfo.pPoolSizes = poolSizes.data();
 
     // Corrected maxSets calculation
-    poolInfo.maxSets = static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount + 1)); // Total descriptor sets
+    poolInfo.maxSets = static_cast<uint32_t>(
+        m_MaxFramesInFlight * (m_MaterialCount + 1) + // Main pass descriptor sets
+        m_MaxFramesInFlight +                        // Final pass descriptor sets
+        m_MaxFramesInFlight                          // Compute descriptor sets
+        );
 
     if (vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescriptorPool) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to create descriptor pool!");
     }
 }
+
 
 void DescriptorManager::createDescriptorSets(
     const std::vector<VkBuffer>& uniformBuffers,
@@ -496,4 +513,161 @@ void DescriptorManager::updateFinalPassDescriptorSet(
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
+void DescriptorManager::createComputeDescriptorSetLayout()
+{
+    VkDescriptorSetLayoutBinding inputImageBinding{};
+    inputImageBinding.binding = 0;
+    inputImageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    inputImageBinding.descriptorCount = 1;
+    inputImageBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    inputImageBinding.pImmutableSamplers = nullptr;
 
+    VkDescriptorSetLayoutBinding outputImageBinding{};
+    outputImageBinding.binding = 1;
+    outputImageBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    outputImageBinding.descriptorCount = 1;
+    outputImageBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    outputImageBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutBinding samplerBinding{};
+    samplerBinding.binding = 2;
+    samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    samplerBinding.descriptorCount = 1;
+    samplerBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    samplerBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 3> bindings = {
+        inputImageBinding,
+        outputImageBinding,
+        samplerBinding
+    };
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
+
+    if (vkCreateDescriptorSetLayout(m_Device, &layoutInfo, nullptr, &m_ComputeDescriptorSetLayout) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create compute descriptor set layout.");
+    }
+}
+
+VkDescriptorSetLayout DescriptorManager::getComputeDescriptorSetLayout() const
+{
+	return m_ComputeDescriptorSetLayout;
+}
+
+void DescriptorManager::createComputeDescriptorSet(
+    size_t frameIndex,
+    VkImageView inputImageView,
+    VkImageView outputImageView,
+    VkSampler sampler)
+{
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = m_DescriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &m_ComputeDescriptorSetLayout;
+
+    if (vkAllocateDescriptorSets(m_Device, &allocInfo, &m_ComputeDescriptorSets[frameIndex]) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to allocate compute descriptor set.");
+    }
+
+    VkDescriptorImageInfo inputImageInfo{};
+    inputImageInfo.imageView = inputImageView;
+    inputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkDescriptorImageInfo outputImageInfo{};
+    outputImageInfo.imageView = outputImageView;
+    outputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkDescriptorImageInfo samplerInfo{};
+    samplerInfo.sampler = sampler;
+
+    std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = m_ComputeDescriptorSets[frameIndex];
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pImageInfo = &inputImageInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = m_ComputeDescriptorSets[frameIndex];
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pImageInfo = &outputImageInfo;
+
+    descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[2].dstSet = m_ComputeDescriptorSets[frameIndex];
+    descriptorWrites[2].dstBinding = 2;
+    descriptorWrites[2].dstArrayElement = 0;
+    descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    descriptorWrites[2].descriptorCount = 1;
+    descriptorWrites[2].pImageInfo = &samplerInfo;
+
+    vkUpdateDescriptorSets(
+        m_Device,
+        static_cast<uint32_t>(descriptorWrites.size()),
+        descriptorWrites.data(),
+        0,
+        nullptr);
+}
+
+void DescriptorManager::updateComputeDescriptorSet(size_t frameIndex, VkImageView inputImageView, VkImageView outputImageView, VkSampler sampler)
+{
+	VkDescriptorImageInfo inputImageInfo{};
+	inputImageInfo.imageView = inputImageView;
+	inputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	VkDescriptorImageInfo outputImageInfo{};
+	outputImageInfo.imageView = outputImageView;
+	outputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	VkDescriptorImageInfo samplerInfo{};
+	samplerInfo.sampler = sampler;
+
+	std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+
+	descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[0].dstSet = m_ComputeDescriptorSets[frameIndex];
+	descriptorWrites[0].dstBinding = 0;
+	descriptorWrites[0].dstArrayElement = 0;
+	descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	descriptorWrites[0].descriptorCount = 1;
+	descriptorWrites[0].pImageInfo = &inputImageInfo;
+
+	descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[1].dstSet = m_ComputeDescriptorSets[frameIndex];
+	descriptorWrites[1].dstBinding = 1;
+	descriptorWrites[1].dstArrayElement = 0;
+	descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	descriptorWrites[1].descriptorCount = 1;
+	descriptorWrites[1].pImageInfo = &outputImageInfo;
+
+	descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[2].dstSet = m_ComputeDescriptorSets[frameIndex];
+	descriptorWrites[2].dstBinding = 2;
+	descriptorWrites[2].dstArrayElement = 0;
+	descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+	descriptorWrites[2].descriptorCount = 1;
+	descriptorWrites[2].pImageInfo = &samplerInfo;
+
+	vkUpdateDescriptorSets(
+		m_Device,
+		static_cast<uint32_t>(descriptorWrites.size()),
+		descriptorWrites.data(),
+		0,
+		nullptr);
+}
+
+const std::vector<VkDescriptorSet>& DescriptorManager::getComputeDescriptorSets() const
+{
+	return m_ComputeDescriptorSets;
+}

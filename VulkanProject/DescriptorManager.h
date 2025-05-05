@@ -1,5 +1,5 @@
-// DescriptorManager.h
 #pragma once
+
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "Material.h"
@@ -19,7 +19,6 @@ public:
     );
 
     void createFinalPassDescriptorSetLayout();
-
     void createFinalPassDescriptorSet(
         size_t frameIndex,
         VkImageView diffuseImageView,
@@ -28,11 +27,10 @@ public:
         VkImageView depthImageView,
         VkBuffer uniformBuffer,
         size_t uniformBufferObjectSize,
-		VkBuffer lightBuffer,
-		size_t lightBufferObjectSize,
+        VkBuffer lightBuffer,
+        size_t lightBufferObjectSize,
         VkSampler sampler
     );
-
     void updateFinalPassDescriptorSet(
         size_t frameIndex,
         VkImageView diffuseImageView,
@@ -46,10 +44,27 @@ public:
         VkSampler sampler
     );
 
+    void createComputeDescriptorSetLayout();
+    void createComputeDescriptorSet(
+		size_t frameIndex,
+        VkImageView inputImageView,
+        VkImageView outputImageView,
+        VkSampler sampler
+    );
+	void updateComputeDescriptorSet(
+		size_t frameIndex,
+		VkImageView inputImageView,
+		VkImageView outputImageView,
+		VkSampler sampler
+	);
+
     VkDescriptorSetLayout getDescriptorSetLayout() const;
     VkDescriptorSetLayout getFinalPassDescriptorSetLayout() const;
+    VkDescriptorSetLayout getComputeDescriptorSetLayout() const;
+
     const std::vector<VkDescriptorSet>& getDescriptorSets() const;
     const std::vector<VkDescriptorSet>& getFinalPassDescriptorSets() const;
+    const std::vector<VkDescriptorSet>& getComputeDescriptorSets() const;
 
 private:
     VkDevice m_Device;
@@ -57,8 +72,12 @@ private:
     size_t m_MaterialCount;
 
     VkDescriptorSetLayout m_DescriptorSetLayout{};
-    VkDescriptorSetLayout m_FinalPassDescriptorSetLayout{}; // New member
+    VkDescriptorSetLayout m_FinalPassDescriptorSetLayout{};
+    VkDescriptorSetLayout m_ComputeDescriptorSetLayout{}; // **Added**
+
     VkDescriptorPool m_DescriptorPool{};
     std::vector<VkDescriptorSet> m_DescriptorSets{};
-    std::vector<VkDescriptorSet> m_FinalPassDescriptorSets; // New member
+    std::vector<VkDescriptorSet> m_FinalPassDescriptorSets{};
+    std::vector<VkDescriptorSet> m_ComputeDescriptorSets{}; // **Added**
 };
+
