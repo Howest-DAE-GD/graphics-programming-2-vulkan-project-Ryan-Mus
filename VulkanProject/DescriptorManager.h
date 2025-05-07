@@ -48,14 +48,12 @@ public:
     void createComputeDescriptorSet(
 		size_t frameIndex,
         VkImageView inputImageView,
-        VkImageView outputImageView,
-        VkSampler sampler
+        VkImageView outputImageView
     );
 	void updateComputeDescriptorSet(
 		size_t frameIndex,
 		VkImageView inputImageView,
-		VkImageView outputImageView,
-		VkSampler sampler
+		VkImageView outputImageView
 	);
 
     VkDescriptorSetLayout getDescriptorSetLayout() const;

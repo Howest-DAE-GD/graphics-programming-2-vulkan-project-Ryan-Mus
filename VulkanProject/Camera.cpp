@@ -4,7 +4,7 @@ Camera::Camera(GLFWwindow* window, glm::vec3 position, glm::vec3 up, float yaw, 
     : m_Window(window), m_Position(position), m_WorldUp(up), m_Yaw(yaw), m_Pitch(pitch),
       m_FirstMouse(true), m_MovementSpeed(2.5f), m_MouseSensitivity(0.1f)
 {
-    m_Front = glm::vec3(0.0f, 0.0f, -1.0f);
+    m_Front = glm::vec3(0.0f, 0.0f, 1.0f);
     update(0.0f);
 }
 

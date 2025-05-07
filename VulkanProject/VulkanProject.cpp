@@ -4,8 +4,8 @@
 #include <chrono>
 
 int main() {
-    const uint32_t WIDTH = 800;
-    const uint32_t HEIGHT = 600;
+    const uint32_t WIDTH = 1200;
+    const uint32_t HEIGHT = 800;
 
 #ifdef NDEBUG
     spdlog::set_level(spdlog::level::info);

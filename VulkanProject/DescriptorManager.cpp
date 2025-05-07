@@ -112,9 +112,9 @@ void DescriptorManager::createDescriptorPool()
               { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                 static_cast<uint32_t>(m_MaxFramesInFlight * 2) }, // Input and output images per frame
 
-                // Total samplers (compute descriptors)
-                { VK_DESCRIPTOR_TYPE_SAMPLER,
-                  static_cast<uint32_t>(m_MaxFramesInFlight) }
+                //// Total samplers (compute descriptors)
+                //{ VK_DESCRIPTOR_TYPE_SAMPLER,
+                //  static_cast<uint32_t>(m_MaxFramesInFlight) }
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -134,7 +134,6 @@ void DescriptorManager::createDescriptorPool()
         throw std::runtime_error("Failed to create descriptor pool!");
     }
 }
-
 
 void DescriptorManager::createDescriptorSets(
     const std::vector<VkBuffer>& uniformBuffers,
@@ -529,17 +528,9 @@ void DescriptorManager::createComputeDescriptorSetLayout()
     outputImageBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     outputImageBinding.pImmutableSamplers = nullptr;
 
-    VkDescriptorSetLayoutBinding samplerBinding{};
-    samplerBinding.binding = 2;
-    samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    samplerBinding.descriptorCount = 1;
-    samplerBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    samplerBinding.pImmutableSamplers = nullptr;
-
-    std::array<VkDescriptorSetLayoutBinding, 3> bindings = {
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {
         inputImageBinding,
-        outputImageBinding,
-        samplerBinding
+        outputImageBinding
     };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -561,8 +552,8 @@ VkDescriptorSetLayout DescriptorManager::getComputeDescriptorSetLayout() const
 void DescriptorManager::createComputeDescriptorSet(
     size_t frameIndex,
     VkImageView inputImageView,
-    VkImageView outputImageView,
-    VkSampler sampler)
+    VkImageView outputImageView
+)
 {
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -583,10 +574,7 @@ void DescriptorManager::createComputeDescriptorSet(
     outputImageInfo.imageView = outputImageView;
     outputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-    VkDescriptorImageInfo samplerInfo{};
-    samplerInfo.sampler = sampler;
-
-    std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_ComputeDescriptorSets[frameIndex];
@@ -604,14 +592,6 @@ void DescriptorManager::createComputeDescriptorSet(
     descriptorWrites[1].descriptorCount = 1;
     descriptorWrites[1].pImageInfo = &outputImageInfo;
 
-    descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[2].dstSet = m_ComputeDescriptorSets[frameIndex];
-    descriptorWrites[2].dstBinding = 2;
-    descriptorWrites[2].dstArrayElement = 0;
-    descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    descriptorWrites[2].descriptorCount = 1;
-    descriptorWrites[2].pImageInfo = &samplerInfo;
-
     vkUpdateDescriptorSets(
         m_Device,
         static_cast<uint32_t>(descriptorWrites.size()),
@@ -620,7 +600,7 @@ void DescriptorManager::createComputeDescriptorSet(
         nullptr);
 }
 
-void DescriptorManager::updateComputeDescriptorSet(size_t frameIndex, VkImageView inputImageView, VkImageView outputImageView, VkSampler sampler)
+void DescriptorManager::updateComputeDescriptorSet(size_t frameIndex, VkImageView inputImageView, VkImageView outputImageView)
 {
 	VkDescriptorImageInfo inputImageInfo{};
 	inputImageInfo.imageView = inputImageView;
@@ -630,10 +610,8 @@ void DescriptorManager::updateComputeDescriptorSet(size_t frameIndex, VkImageVie
 	outputImageInfo.imageView = outputImageView;
 	outputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-	VkDescriptorImageInfo samplerInfo{};
-	samplerInfo.sampler = sampler;
 
-	std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+	std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
 
 	descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	descriptorWrites[0].dstSet = m_ComputeDescriptorSets[frameIndex];
@@ -650,14 +628,6 @@ void DescriptorManager::updateComputeDescriptorSet(size_t frameIndex, VkImageVie
 	descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 	descriptorWrites[1].descriptorCount = 1;
 	descriptorWrites[1].pImageInfo = &outputImageInfo;
-
-	descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrites[2].dstSet = m_ComputeDescriptorSets[frameIndex];
-	descriptorWrites[2].dstBinding = 2;
-	descriptorWrites[2].dstArrayElement = 0;
-	descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-	descriptorWrites[2].descriptorCount = 1;
-	descriptorWrites[2].pImageInfo = &samplerInfo;
 
 	vkUpdateDescriptorSets(
 		m_Device,

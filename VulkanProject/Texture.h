@@ -15,7 +15,8 @@ class Texture
 public:
     enum class Format {
         SRGB,
-        UNORM
+        UNORM,
+        HDR
     };
 
     Texture(Device* pDevice, VmaAllocator allocator, CommandPool* pCommandPool,

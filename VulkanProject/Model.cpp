@@ -274,7 +274,7 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
         }
         else
         {
-            material->pDiffuseTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, "models/default_white.png", m_pPhysicalDevice->get());
+            material->pDiffuseTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, "default/default_black.png", m_pPhysicalDevice->get());
         }
 
         // Normal texture
@@ -288,7 +288,7 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
         }
         else
         {
-            material->pNormalTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, "models/default_black.png", m_pPhysicalDevice->get(), Texture::Format::UNORM);
+            material->pNormalTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, "default/default_black.png", m_pPhysicalDevice->get(), Texture::Format::UNORM);
         }
 
         // Metallic-Roughness texture
@@ -300,7 +300,7 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
         }
         else
         {
-            material->pMetallicRoughnessTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, "models/default_black.png", m_pPhysicalDevice->get());
+            material->pMetallicRoughnessTexture = new Texture(m_pDevice, m_Allocator, m_pCommandPool, "default/default_black.png", m_pPhysicalDevice->get());
         }
 
         m_Materials.push_back(material);

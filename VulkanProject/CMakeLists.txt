@@ -180,34 +180,49 @@ foreach(SHADER ${SPV_SHADERS})
     )
 endforeach()
 
-# Add textures to build
-set(TEXTURE_DIR "${CMAKE_SOURCE_DIR}/Textures")
-set(TEXTURE_OUT_DIR "${CMAKE_BINARY_DIR}/Textures")
-file(MAKE_DIRECTORY ${TEXTURE_OUT_DIR})
+# Add default folder to build
+set(DEFAULT_DIR "${CMAKE_SOURCE_DIR}/default")
+set(DEFAULT_OUT_DIR "${CMAKE_BINARY_DIR}/default")
+file(MAKE_DIRECTORY ${DEFAULT_OUT_DIR})
 
-file(GLOB TEXTURE_FILES "${TEXTURE_DIR}/*")
+# Recursively gather all files and subdirectories in the default directory
+file(GLOB_RECURSE DEFAULT_FILES "${DEFAULT_DIR}/*")
 
-foreach(TEXTURE ${TEXTURE_FILES})
+foreach(DEFAULT_FILE ${DEFAULT_FILES})
+    # Compute the relative path of the file within the default directory
+    file(RELATIVE_PATH REL_PATH "${DEFAULT_DIR}" "${DEFAULT_FILE}")
+    # Construct the destination path in the build directory
+    set(DEST_PATH "${DEFAULT_OUT_DIR}/${REL_PATH}")
+    # Ensure the destination directory exists
+    get_filename_component(DEST_DIR "${DEST_PATH}" DIRECTORY)
+    file(MAKE_DIRECTORY "${DEST_DIR}")
+    # Add a custom command to copy the file
     add_custom_command(
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${TEXTURE} ${TEXTURE_OUT_DIR}/
-        COMMENT "Copying texture ${TEXTURE} to build directory..."
+            "${DEFAULT_FILE}" "${DEST_PATH}"
+        COMMENT "Copying default file ${DEFAULT_FILE} to build directory..."
     )
 endforeach()
+
 
 # Add models to build
 set(MODEL_DIR "${CMAKE_SOURCE_DIR}/models")
 set(MODEL_OUT_DIR "${CMAKE_BINARY_DIR}/models")
 file(MAKE_DIRECTORY ${MODEL_OUT_DIR})
 
+# Recursively gather all files and subdirectories in the models directory
 file(GLOB_RECURSE MODEL_FILES "${MODEL_DIR}/*")
 
 foreach(MODEL ${MODEL_FILES})
+    # Compute the relative path of the file within the models directory
     file(RELATIVE_PATH REL_PATH "${MODEL_DIR}" "${MODEL}")
+    # Construct the destination path in the build directory
     set(DEST_PATH "${MODEL_OUT_DIR}/${REL_PATH}")
+    # Ensure the destination directory exists
     get_filename_component(DEST_DIR "${DEST_PATH}" DIRECTORY)
     file(MAKE_DIRECTORY "${DEST_DIR}")
+    # Add a custom command to copy the file
     add_custom_command(
         TARGET VulkanProject POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -215,3 +230,4 @@ foreach(MODEL ${MODEL_FILES})
         COMMENT "Copying model ${MODEL} to build directory..."
     )
 endforeach()
+

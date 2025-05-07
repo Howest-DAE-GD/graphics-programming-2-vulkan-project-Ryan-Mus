@@ -128,10 +128,9 @@ void Renderer::initVulkan()
 
     createLightBuffer();
 
-	m_Lights.push_back(Light{ glm::vec3(0.0f, 0.2f, 0.0f), glm::vec3(1.0f, 0.3f, 0.3f), 0.5f, 2.0f });
-	m_Lights.push_back(Light{ glm::vec3(1.0f, 0.2f, 0.0f), glm::vec3(0.2f, 1.0f, 0.2f), 1.0f, 4.0f });
-    m_Lights.push_back(Light{ glm::vec3(2.0f, 0.2f, 0.0f), glm::vec3(0.3f, 0.3f, 1.f), 2.0f, 6.0f });
-    m_Lights.push_back(Light{ glm::vec3(6.0f, 0.2f, 0.0f), glm::vec3(1.f, 1.f, 0.2f), 20.0f, 8.0f });
+	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 30.0f, 25.0f });
+    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 30.0f, 25.0f });
+    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 30.0f, 25.0f });
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -195,8 +194,7 @@ void Renderer::initVulkan()
         m_pDescriptorManager->createComputeDescriptorSet(
 			i,
 			m_HDRImageView[i],
-			m_LDRImageView[i],
-			Texture::getTextureSampler()
+			m_LDRImageView[i]
 		);
     }
 
@@ -357,44 +355,6 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         throw std::runtime_error("Failed to begin recording command buffer!");
     }
 
-   
-    // Transition G-buffer images for the current frame
-    transitionImageLayout(
-        commandBuffer,
-        currentGBuffer.pDiffuseImage->getImage(),
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_SHADER_READ_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT
-    );
-
-    transitionImageLayout(
-        commandBuffer,
-        currentGBuffer.pNormalImage->getImage(),
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_SHADER_READ_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT
-    );
-
-    transitionImageLayout(
-        commandBuffer,
-        currentGBuffer.pMetallicRougnessImage->getImage(),
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_SHADER_READ_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT
-    );
-
     // Transition depth image to DEPTH_STENCIL_ATTACHMENT_OPTIMAL for depth pre-pass
     transitionImageLayout(
         commandBuffer,
@@ -468,7 +428,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
             // Perform frustum culling
             if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
-                //continue;
+                continue;
             }
 
             // Calculate descriptor set index
@@ -499,32 +459,55 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
         vkCmdEndRendering(commandBuffer);
     }
+           // Ensure depth data is available for the main pass
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pDepthImage->getImage(),
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
+    );
 
-    // **Memory Barrier for Depth Buffer (Synchronization2)**
-    {
-        // Ensure depth data is available for the main pass
-        VkImageMemoryBarrier2 depthBarrier{};
-        depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        depthBarrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depthBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-        depthBarrier.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        depthBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
-        depthBarrier.dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        depthBarrier.image = currentGBuffer.pDepthImage->getImage();
-        depthBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        depthBarrier.subresourceRange.baseMipLevel = 0;
-        depthBarrier.subresourceRange.levelCount = 1;
-        depthBarrier.subresourceRange.baseArrayLayer = 0;
-        depthBarrier.subresourceRange.layerCount = 1;
+    // Transition G-buffer images for the current frame
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pDiffuseImage->getImage(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
 
-        VkDependencyInfo dependencyInfo{};
-        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        dependencyInfo.imageMemoryBarrierCount = 1;
-        dependencyInfo.pImageMemoryBarriers = &depthBarrier;
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pNormalImage->getImage(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
 
-        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
-    }
+    transitionImageLayout(
+        commandBuffer,
+        currentGBuffer.pMetallicRougnessImage->getImage(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_SHADER_READ_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
 
     // **Main Rendering Pass**
     {
@@ -594,7 +577,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
             // Perform frustum culling
             if (!frustum.isBoxVisible(transformedMin, transformedMax)) {
-                //continue;
+                continue;
             }
 
             // Calculate descriptor set index
@@ -975,7 +958,10 @@ void Renderer::recreateSwapChain()
 	createHDRImage();
 	createLDRImage();
 
-    // Update descriptor sets for the final pass with per-frame G-buffers
+    m_pSwapChain->getImages();
+
+
+    // Update descriptor sets and swapvhain
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         m_pDescriptorManager->updateFinalPassDescriptorSet(
@@ -990,6 +976,12 @@ void Renderer::recreateSwapChain()
             (sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t)),
             Texture::getTextureSampler()
         );
+
+		m_pDescriptorManager->updateComputeDescriptorSet(
+			i,
+			m_HDRImageView[i],
+			m_LDRImageView[i]
+		);
     }
 }
 
