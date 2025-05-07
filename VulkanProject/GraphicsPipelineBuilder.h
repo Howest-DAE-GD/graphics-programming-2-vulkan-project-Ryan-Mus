@@ -23,6 +23,7 @@ public:
 	GraphicsPipelineBuilder& enableDepthWrite(bool enable);
 	GraphicsPipelineBuilder& setDepthCompareOp(VkCompareOp compareOp);
 	GraphicsPipelineBuilder& setRasterizationState(VkCullModeFlags cullMode);
+	GraphicsPipelineBuilder& setPushConstantRange(size_t size);
 
     GraphicsPipeline* build();
 
@@ -42,5 +43,7 @@ private:
 	bool m_DepthWriteEnabled{ false };
 	VkCompareOp m_DepthCompareOp{ VK_COMPARE_OP_LESS };
 	VkCullModeFlags m_CullMode{ VK_CULL_MODE_BACK_BIT };
+	size_t m_PushConstantSize{ 0 };
+    bool m_HasVertexInput{ false };
 };
 

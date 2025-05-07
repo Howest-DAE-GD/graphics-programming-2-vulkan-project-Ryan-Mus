@@ -27,6 +27,8 @@ layout(std430,binding = 5) readonly buffer LightsBuffer {
     Light lights[];
 };
 
+layout(binding = 6) uniform samplerCube skyboxSampler;
+
 const float PI = 3.14159265359;
 
 // Debug visualization mode - switch between different tests
@@ -180,22 +182,30 @@ void main()
 {
     // Get depth value using texelFetch for raw depth
     ivec2 texelCoord = ivec2(fragTexCoord * ubo.viewportSize);
-    float depth = texelFetch(depthSampler, texelCoord, 0).r;
-    
-    // Try both reconstruction methods
-    vec3 worldPos = reconstructWorldPosition(depth, fragTexCoord);
-    //vec3 worldPos = reconstructWorldPosition_Alt(depth, fragTexCoord);  // Uncomment to test alternative
-    
+    const float depth = texelFetch(depthSampler, texelCoord, 0).r;
+
+    const vec3 worldPos = reconstructWorldPosition(depth, fragTexCoord);
+     
+     if (depth >= 1.0) {
+
+        vec3 sampleDirection = normalize(worldPos.xyz);
+
+        sampleDirection.y = -sampleDirection.y; 
+        
+        outColor = texture(skyboxSampler, sampleDirection);
+        return;
+     }
+
     // Get material properties from textures
-    vec4 albedoTexture = texture(diffuseSampler, fragTexCoord);
-    vec3 albedo = albedoTexture.rgb;
+    const vec4 albedoTexture = texture(diffuseSampler, fragTexCoord);
+    const vec3 albedo = albedoTexture.rgb;
     
-    vec3 normalMap = normalize(texture(normalSampler, fragTexCoord).rgb * 2.0 - 1.0);
-    vec3 N = normalMap;
+    const vec3 normalMap = normalize(texture(normalSampler, fragTexCoord).rgb * 2.0 - 1.0);
+    const vec3 N = normalMap;
     
-    vec4 metallicRoughness = texture(metallicRoughnessSampler, fragTexCoord);
-    float metallic = metallicRoughness.b;
-    float roughness = metallicRoughness.g;
+    const vec4 metallicRoughness = texture(metallicRoughnessSampler, fragTexCoord);
+    const float metallic = metallicRoughness.b;
+    const float roughness = metallicRoughness.g;
     
     vec3 finalColor;
     

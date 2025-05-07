@@ -25,6 +25,7 @@
 
 #include <vector>
 #include <string>
+#include <array>
 
 
 
@@ -49,6 +50,7 @@ private:
     void createUniformBuffers();
 	void createLightBuffer();
     void createCommandBuffers();
+    void createSkyboxCubeMap();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void updateUniformBuffer(uint32_t currentImage);
 	void updateLightBuffer(uint32_t currentImage);
@@ -59,6 +61,18 @@ private:
     // Helper functions
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    
+    void renderToCubeMap(
+        Image* pInputImage,
+        VkImageView inputImageView,
+        Image* pOutputCubeMapImage,
+        std::array<VkImageView, 6> outputCubeMapImageViews,
+        VkSampler sampler,
+        const std::string& vertexShaderPath,
+        const std::string& fragmentShaderPath
+    );
+
+	//Pure Vulkan function
     void transitionImageLayout(
         VkCommandBuffer commandBuffer,
         VkImage image,
@@ -70,6 +84,7 @@ private:
         VkAccessFlags2 dstAccessMask,
 		VkImageAspectFlags aspectMask);
 
+	// Uses Image class
     void transitionImageLayout(
         VkCommandBuffer commandBuffer,
         Image* pImage,
@@ -142,17 +157,26 @@ private:
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     static constexpr int MAX_LIGHT_COUNT = 10;
 
+	// modelprojview matrix + camera position + viewport size
     UniformBufferObject m_UniformBufferObject{};
+	//Light pass buffer
     std::vector<GBuffer> m_GBuffers;
 	std::vector<Light> m_Lights;
 	std::vector<Buffer*> m_pLightBuffers;
 
+	// HDR and LDR images
 	std::vector<Image*> m_pHDRImage;
 	std::vector<VkImageView> m_HDRImageView;
 
 	std::vector<Image*> m_pLDRImage;
 	std::vector<VkImageView> m_LDRImageView;
 
+	//HDRI -> Cube map -> Irradiance map
+    Image* m_pSkyboxCubeMapImage;
+    std::array<VkImageView,6> m_SkyboxCubeMapImageViews;
+	VkImageView m_SkyboxCubeMapImageView;
+
     // Paths
     const std::string MODEL_PATH_ = "models/glTF/Sponza.gltf";
+	const std::string HDRI_PATH_ = "default/pretoria_gardens_2k.hdr";
 };

@@ -28,6 +28,7 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::setSwapChainExtent(VkExtent2D 
 
 GraphicsPipelineBuilder& GraphicsPipelineBuilder::setVertexInputBindingDescription(const VkVertexInputBindingDescription& bindingDescription) {
     m_BindingDescription = bindingDescription;
+    m_HasVertexInput = true;
     return *this;
 }
 
@@ -59,30 +60,33 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::setAttachmentCount(uint16_t at
 }
 
 GraphicsPipelineBuilder& GraphicsPipelineBuilder::enableDepthTest(bool enable) {
-	m_DepthTestEnabled = enable;
-	return *this;
+    m_DepthTestEnabled = enable;
+    return *this;
 }
 
 GraphicsPipelineBuilder& GraphicsPipelineBuilder::enableDepthWrite(bool enable) {
-	m_DepthWriteEnabled = enable;
-	return *this;
+    m_DepthWriteEnabled = enable;
+    return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthCompareOp(VkCompareOp compareOp)
-{
-	m_DepthCompareOp = compareOp;
-	return *this;
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthCompareOp(VkCompareOp compareOp) {
+    m_DepthCompareOp = compareOp;
+    return *this;
 }
 
-GraphicsPipelineBuilder& GraphicsPipelineBuilder::setRasterizationState(VkCullModeFlags cullMode)
-{
-	m_CullMode = cullMode;
-	return *this;
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setRasterizationState(VkCullModeFlags cullMode) {
+    m_CullMode = cullMode;
+    return *this;
 }
 
-GraphicsPipeline* GraphicsPipelineBuilder::build() 
-{
-	spdlog::debug("Building graphics pipeline with vertex shader: {} and fragment shader: {}", m_VertShaderPath, m_FragShaderPath);
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setPushConstantRange(size_t size) {
+    m_PushConstantSize = size;
+    return *this;
+}
+
+GraphicsPipeline* GraphicsPipelineBuilder::build() {
+    spdlog::debug("Building graphics pipeline with vertex shader: {} and fragment shader: {}", m_VertShaderPath, m_FragShaderPath);
+
     // Load shader code
     auto vertShaderCode = readFile(m_VertShaderPath);
     auto fragShaderCode = readFile(m_FragShaderPath);
@@ -109,10 +113,21 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     // Vertex input state
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &m_BindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_AttributeDescriptions.size());
-    vertexInputInfo.pVertexAttributeDescriptions = m_AttributeDescriptions.data();
+
+    if (m_AttributeDescriptions.empty()) {
+        // No vertex input bindings or attributes
+        vertexInputInfo.vertexBindingDescriptionCount = 0;
+        vertexInputInfo.pVertexBindingDescriptions = nullptr;
+        vertexInputInfo.vertexAttributeDescriptionCount = 0;
+        vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+    }
+    else {
+        // Use provided vertex input descriptions
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions = &m_BindingDescription;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(m_AttributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions = m_AttributeDescriptions.data();
+    }
 
     // Input assembly state
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -169,8 +184,7 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     // Color blend state
     std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments(m_AttachmentCount);
     VkPipelineColorBlendAttachmentState defaultColorBlendAttachment{};
-    defaultColorBlendAttachment.colorWriteMask =
-        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+    defaultColorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     defaultColorBlendAttachment.blendEnable = VK_FALSE; // Disable blending
 
@@ -186,8 +200,7 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     colorBlending.pAttachments = colorBlendAttachments.data();
 
     // Dynamic states
-    std::vector<VkDynamicState> dynamicStates =
-    {
+    std::vector<VkDynamicState> dynamicStates = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
     };
@@ -197,17 +210,28 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
+    // Push constants
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = static_cast<uint32_t>(m_PushConstantSize);
+
     // Pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = &m_DescriptorSetLayout;
-    pipelineLayoutInfo.pushConstantRangeCount = 0;      // Optional
-    pipelineLayoutInfo.pPushConstantRanges = nullptr;  // Optional
+    if (m_PushConstantSize > 0) {
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    }
+    else {
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+    }
 
     VkPipelineLayout pipelineLayout;
-    if (vkCreatePipelineLayout(m_Device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) 
-    {
+    if (vkCreatePipelineLayout(m_Device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
         vkDestroyShaderModule(m_Device, vertShaderModule, nullptr);
         vkDestroyShaderModule(m_Device, fragShaderModule, nullptr);
         throw std::runtime_error("Failed to create pipeline layout");
@@ -220,7 +244,6 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     renderingCreateInfo.pColorAttachmentFormats = m_ColorFormats.data();
     renderingCreateInfo.depthAttachmentFormat = m_DepthFormat;
     renderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
-
 
     // Graphics pipeline
     VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -240,10 +263,9 @@ GraphicsPipeline* GraphicsPipelineBuilder::build()
     pipelineInfo.renderPass = VK_NULL_HANDLE; // No render pass
     pipelineInfo.subpass = 0;
 
-	// Create the graphics pipeline
+    // Create the graphics pipeline
     VkPipeline graphicsPipeline;
-    if (vkCreateGraphicsPipelines(m_Device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) 
-    {
+    if (vkCreateGraphicsPipelines(m_Device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         vkDestroyPipelineLayout(m_Device, pipelineLayout, nullptr);
         vkDestroyShaderModule(m_Device, vertShaderModule, nullptr);
         vkDestroyShaderModule(m_Device, fragShaderModule, nullptr);

@@ -297,7 +297,23 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
 	lightBufferBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	lightBufferBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 6> bindings = { diffuseBinding, normalBinding, metallicRoughnessBinding, depthBinding, uboLayoutBinding, lightBufferBinding};
+    //Binding for skybox cubemap (binding = 6)
+	VkDescriptorSetLayoutBinding skyboxBinding{};
+	skyboxBinding.binding = 6;
+	skyboxBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	skyboxBinding.descriptorCount = 1;
+	skyboxBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	skyboxBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 7> bindings = { 
+        diffuseBinding,
+        normalBinding,
+        metallicRoughnessBinding,
+        depthBinding,
+        uboLayoutBinding,
+        lightBufferBinding,
+        skyboxBinding
+    };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -325,6 +341,7 @@ void DescriptorManager::createFinalPassDescriptorSet(
     size_t uniformBufferObjectSize,
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
+	VkImageView skyboxImageView,
     VkSampler sampler)
 {
     // Allocate the descriptor set
@@ -370,7 +387,12 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	lightBufferInfo.offset = 0;
 	lightBufferInfo.range = lightBufferObjectSize;
 
-    std::array<VkWriteDescriptorSet, 6> descriptorWrites{};
+	VkDescriptorImageInfo skyboxImageInfo{};
+	skyboxImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	skyboxImageInfo.imageView = skyboxImageView;
+	skyboxImageInfo.sampler = sampler;
+
+    std::array<VkWriteDescriptorSet, 7> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -414,6 +436,13 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	descriptorWrites[5].descriptorCount = 1;
 	descriptorWrites[5].pBufferInfo = &lightBufferInfo;
 
+	descriptorWrites[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[6].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[6].dstBinding = 6;
+	descriptorWrites[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[6].descriptorCount = 1;
+	descriptorWrites[6].pImageInfo = &skyboxImageInfo;
+
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
@@ -432,6 +461,7 @@ void DescriptorManager::updateFinalPassDescriptorSet(
     size_t uniformBufferObjectSize,
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
+	VkImageView skyboxImageView,
     VkSampler sampler)
 {
     // Update the descriptor set with the new G-Buffer images
@@ -465,7 +495,12 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	lightBufferInfo.offset = 0;
 	lightBufferInfo.range = lightBufferObjectSize;
 
-    std::array<VkWriteDescriptorSet, 6> descriptorWrites{};
+	VkDescriptorImageInfo skyboxImageInfo{};
+	skyboxImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	skyboxImageInfo.imageView = skyboxImageView;
+	skyboxImageInfo.sampler = sampler;
+
+    std::array<VkWriteDescriptorSet, 7> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -508,6 +543,11 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	descriptorWrites[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	descriptorWrites[5].descriptorCount = 1;
 	descriptorWrites[5].pBufferInfo = &lightBufferInfo;
+
+	descriptorWrites[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[6].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[6].dstBinding = 6;
+	descriptorWrites[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }

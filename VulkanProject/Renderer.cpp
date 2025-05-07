@@ -143,6 +143,8 @@ void Renderer::initVulkan()
     size_t materialCount = m_pModel->getMaterials().size();
     m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT, materialCount);
 
+    createSkyboxCubeMap();
+    
     // Create descriptor set layouts and pools    
     m_pDescriptorManager->createDescriptorSetLayout();
     m_pDescriptorManager->createFinalPassDescriptorSetLayout();
@@ -184,6 +186,7 @@ void Renderer::initVulkan()
             sizeof(UniformBufferObject),
 			m_pLightBuffers[frameIndex]->get(),
 			sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t),
+			m_SkyboxCubeMapImageView, // Skybox cube map image view
             Texture::getTextureSampler() // Ensure this sampler is created
         );
     }
@@ -293,6 +296,239 @@ VkFormat Renderer::findSupportedFormat(
     throw std::runtime_error("failed to find supported format!");
 }
 
+void Renderer::renderToCubeMap(
+    Image* pInputImage,
+    VkImageView inputImageView,
+    Image* pOutputCubeMapImage,
+    std::array<VkImageView, 6> outputCubeMapImageViews,
+    VkSampler sampler,
+    const std::string& vertexShaderPath,
+    const std::string& fragmentShaderPath
+)
+{
+    // Create descriptor set layout
+    VkDescriptorSetLayoutBinding layoutBinding{};
+    layoutBinding.binding = 0;
+    layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    layoutBinding.descriptorCount = 1;
+    layoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    layoutBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &layoutBinding;
+
+    VkDescriptorSetLayout descriptorSetLayout;
+    if (vkCreateDescriptorSetLayout(m_pDevice->get(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor set layout!");
+    }
+
+    // Create push constant range
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(glm::mat4) * 2; // View and projection matrices
+
+    // Create graphics pipeline
+    GraphicsPipeline* pGraphicsPipeline = GraphicsPipelineBuilder()
+        .setDevice(m_pDevice->get())
+		.setDescriptorSetLayout(descriptorSetLayout)
+		.setPushConstantRange(sizeof(glm::mat4) * 2)
+        .setVertexInputBindingDescription({})
+        .setVertexInputAttributeDescriptions({})
+        .setShaderPaths(vertexShaderPath, fragmentShaderPath)
+        .setColorFormats({ VK_FORMAT_R32G32B32A32_SFLOAT })
+        .setDepthFormat(VK_FORMAT_UNDEFINED)
+        .setRasterizationState(VK_CULL_MODE_NONE)
+        .setAttachmentCount(1)
+        .enableDepthTest(false)
+        .enableDepthWrite(false)
+        .build();
+
+    // Create descriptor pool
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = 1;
+
+    VkDescriptorPool descriptorPool;
+    if (vkCreateDescriptorPool(m_pDevice->get(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor pool!");
+    }
+
+    // Allocate descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout;
+
+    VkDescriptorSet descriptorSet;
+    if (vkAllocateDescriptorSets(m_pDevice->get(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate descriptor set!");
+    }
+
+    // Update descriptor set
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = pInputImage->getImageLayout();
+    imageInfo.imageView = inputImageView;
+    imageInfo.sampler = sampler;
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = descriptorSet;
+    descriptorWrite.dstBinding = 0;
+    descriptorWrite.dstArrayElement = 0;
+    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo = &imageInfo;
+
+    vkUpdateDescriptorSets(m_pDevice->get(), 1, &descriptorWrite, 0, nullptr);
+
+    // Begin command buffer
+    VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+
+    // Set up matrices
+    glm::vec3 eye = glm::vec3(0.0f);
+    glm::mat4 captureViews[6] = {
+        glm::lookAt(eye, eye + glm::vec3(1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)), // +X
+        glm::lookAt(eye, eye + glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)), // -X
+        glm::lookAt(eye, eye + glm::vec3(0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)), // -Y
+        glm::lookAt(eye, eye + glm::vec3(0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)), // +Y
+        glm::lookAt(eye, eye + glm::vec3(0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)), // +Z
+        glm::lookAt(eye, eye + glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))  // -Z
+    };
+
+    glm::mat4 captureProj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+    captureProj[1][1] *= -1.0f; // Inverted Y-axis for matching face orientation
+
+    // Loop over each cube map face
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        // Transition cube map face to color attachment optimal
+        VkImageSubresourceRange subresourceRange{};
+        subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        subresourceRange.baseMipLevel = 0;
+        subresourceRange.levelCount = 1;
+        subresourceRange.baseArrayLayer = face;
+        subresourceRange.layerCount = 1;
+
+        VkImageMemoryBarrier2 barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
+        barrier.srcAccessMask = VK_ACCESS_2_NONE;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.image = pOutputCubeMapImage->getImage();
+        barrier.subresourceRange = subresourceRange;
+
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.imageMemoryBarrierCount = 1;
+        dependencyInfo.pImageMemoryBarriers = &barrier;
+
+        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+
+        // Begin dynamic rendering
+        VkRenderingAttachmentInfo colorAttachment{};
+        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        colorAttachment.imageView = outputCubeMapImageViews[face];
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.clearValue = { {0.0f, 0.0f, 0.0f, 1.0f} };
+
+        VkRenderingInfo renderingInfo{};
+        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        renderingInfo.renderArea.offset = { 0, 0 };
+        renderingInfo.renderArea.extent = { pOutputCubeMapImage->getWidth(), pOutputCubeMapImage->getHeight() };
+        renderingInfo.layerCount = 1;
+        renderingInfo.colorAttachmentCount = 1;
+        renderingInfo.pColorAttachments = &colorAttachment;
+
+        vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+        // Set viewport and scissor
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(pOutputCubeMapImage->getWidth());
+        viewport.height = static_cast<float>(pOutputCubeMapImage->getHeight());
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { pOutputCubeMapImage->getWidth(), pOutputCubeMapImage->getHeight() };
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        // Bind pipeline and descriptor sets
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pGraphicsPipeline->get());
+
+        vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pGraphicsPipeline->getPipelineLayout(),
+            0,
+            1,
+            &descriptorSet,
+            0,
+            nullptr
+        );
+
+        // Push constants for view and projection matrices
+        struct PushConstants {
+            glm::mat4 view;
+            glm::mat4 proj;
+        } pushConstants;
+
+        pushConstants.view = captureViews[face];
+        pushConstants.proj = captureProj;
+
+        vkCmdPushConstants(
+            commandBuffer,
+            pGraphicsPipeline->getPipelineLayout(),
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,
+            sizeof(PushConstants),
+            &pushConstants
+        );
+
+        // Draw call
+        vkCmdDraw(commandBuffer, 36, 1, 0, 0); // Draw all 36 vertices for the full cube
+
+        vkCmdEndRendering(commandBuffer);
+
+        // Transition cube map face to shader read optimal
+        barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+    }
+
+    // End command buffer and submit
+    m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+
+    // Cleanup
+    delete pGraphicsPipeline;
+    vkDestroyDescriptorPool(m_pDevice->get(), descriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(m_pDevice->get(), descriptorSetLayout, nullptr);
+}
+
+
 void Renderer::createUniformBuffers() 
 {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -340,6 +576,148 @@ void Renderer::createCommandBuffers()
     if (vkAllocateCommandBuffers(m_pDevice->get(), &allocInfo, m_CommandBuffers.data()) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate command buffers!");
     }
+}
+
+void Renderer::createSkyboxCubeMap()
+{
+    // **1. Load HDRI Image using stbi_loadf**
+    int texWidth, texHeight, texChannels;
+    float* pixels = stbi_loadf(HDRI_PATH_.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    if (!pixels) {
+        throw std::runtime_error("Failed to load HDRI texture!");
+    }
+    VkDeviceSize imageSize = texWidth * texHeight * 4 * sizeof(float);
+
+    // **2. Create Staging Buffer and Copy Data**
+    Buffer stagingBuffer(
+        m_VmaAllocator,
+        imageSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_ONLY
+    );
+
+    void* data = stagingBuffer.map();
+    memcpy(data, pixels, static_cast<size_t>(imageSize));
+    stagingBuffer.unmap();
+
+    stbi_image_free(pixels);
+
+    // **3. Create HDRI Image**
+    Image* pHDRIImage = new Image(m_pDevice, m_VmaAllocator);
+    pHDRIImage->createImage(
+        texWidth,
+        texHeight,
+        VK_FORMAT_R32G32B32A32_SFLOAT, // Floating point format for HDR
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY
+    );
+
+    // **4. Copy Data from Staging Buffer to HDRI Image**
+    pHDRIImage->transitionImageLayout(
+        m_pCommandPool,
+        m_pDevice->getGraphicsQueue(),
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    );
+
+    pHDRIImage->copyBufferToImage(
+        m_pCommandPool,
+        stagingBuffer.get(),
+        static_cast<uint32_t>(texWidth),
+        static_cast<uint32_t>(texHeight)
+    );
+
+    pHDRIImage->transitionImageLayout(
+        m_pCommandPool,
+        m_pDevice->getGraphicsQueue(),
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    );
+
+    // **5. Create Image View for HDRI Image**
+    VkImageView pHDRIImageView = pHDRIImage->createImageView(
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    // **6. Create Cube Map Image**
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    imageInfo.extent.width = 1024;
+    imageInfo.extent.height = 1024;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 6;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
+    m_pSkyboxCubeMapImage = new Image(m_pDevice, m_VmaAllocator);
+    m_pSkyboxCubeMapImage->createImage(
+        imageInfo.extent.width,
+        imageInfo.extent.height,
+        imageInfo.format,
+        imageInfo.tiling,
+        imageInfo.usage,
+        imageInfo.flags,
+        imageInfo.arrayLayers,
+        VMA_MEMORY_USAGE_GPU_ONLY
+    );
+
+    // **7. Create Image Views for Each Face of the Cube Map**
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = m_pSkyboxCubeMapImage->getImage();
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = imageInfo.format;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = face;
+        viewInfo.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &m_SkyboxCubeMapImageViews[face]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create image views for cube map faces!");
+        }
+    }
+
+    // **8. Render to Cube Map**
+    renderToCubeMap(
+        pHDRIImage,
+        pHDRIImageView,
+        m_pSkyboxCubeMapImage,
+        m_SkyboxCubeMapImageViews,
+        Texture::getTextureSampler(),
+        "shaders/skybox.vert.spv",
+        "shaders/skybox.frag.spv"
+    );
+
+    // **9. Cleanup**
+    vkDestroyImageView(m_pDevice->get(), pHDRIImageView, nullptr);
+    delete pHDRIImage;
+
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = m_pSkyboxCubeMapImage->getImage();
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    viewInfo.format = imageInfo.format;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 6;
+
+	if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &m_SkyboxCubeMapImageView) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create image view for cube map!");
+	}
 }
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
@@ -779,7 +1157,6 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     }
 }
 
-
 void Renderer::drawFrame()
 {
     vkWaitForFences(m_pDevice->get(), 1, m_pSyncObjects->getInFlightFence(m_currentFrame), VK_TRUE, UINT64_MAX);
@@ -928,8 +1305,6 @@ void Renderer::updateLightBuffer(uint32_t currentImage)
     m_pLightBuffers[currentImage]->unmap();
 }
 
-
-
 void Renderer::recreateSwapChain()
 {
     int width = 0, height = 0;
@@ -954,6 +1329,8 @@ void Renderer::recreateSwapChain()
         .setImageUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         .build();
 
+    transitionSwapchainImagesToPresentLayout();
+
     createGBuffer();
 	createHDRImage();
 	createLDRImage();
@@ -974,6 +1351,7 @@ void Renderer::recreateSwapChain()
             sizeof(UniformBufferObject),
             m_pLightBuffers[i]->get(),
             (sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t)),
+			m_SkyboxCubeMapImageView,
             Texture::getTextureSampler()
         );
 
@@ -1029,27 +1407,17 @@ void Renderer::transitionImageLayout(VkCommandBuffer commandBuffer,
     VkAccessFlags2 dstAccessMask,
     VkImageAspectFlags aspectMask)
 {
-    VkImageMemoryBarrier2 barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    barrier.oldLayout = oldLayout;
-    barrier.newLayout = newLayout;
-    barrier.srcStageMask = srcStageMask;
-    barrier.srcAccessMask = srcAccessMask;
-    barrier.dstStageMask = dstStageMask;
-    barrier.dstAccessMask = dstAccessMask;
-    barrier.image = pImage->getImage();
-    barrier.subresourceRange.aspectMask = aspectMask;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-
-    VkDependencyInfo dependencyInfo{};
-    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dependencyInfo.imageMemoryBarrierCount = 1;
-    dependencyInfo.pImageMemoryBarriers = &barrier;
-
-    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+	transitionImageLayout(
+		commandBuffer,
+		pImage->getImage(),
+		oldLayout,
+		newLayout,
+		srcStageMask,
+		dstStageMask,
+		srcAccessMask,
+		dstAccessMask,
+		aspectMask
+	);
 	pImage->setImageLayout(newLayout);
 }
 
@@ -1204,7 +1572,6 @@ void Renderer::createLDRImage()
 	}
 }
 
-
 void Renderer::cleanupSwapChain()
 {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -1305,18 +1672,28 @@ void Renderer::blitLDRToSwapchain(uint32_t imageIndex, VkCommandBuffer commandBu
         VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-
 void Renderer::cleanup() 
 {
     cleanupSwapChain();
 
 
-    for (auto& uniformBuffer : m_pUniformBuffers) {
+    for (auto& uniformBuffer : m_pUniformBuffers) 
+    {
         delete uniformBuffer;
     }
-	for (auto& lightBuffer : m_pLightBuffers) {
+	for (auto& lightBuffer : m_pLightBuffers) 
+    {
 		delete lightBuffer;
 	}
+
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        vkDestroyImageView(m_pDevice->get(), m_SkyboxCubeMapImageViews[face], nullptr);
+    }
+
+	vkDestroyImageView(m_pDevice->get(), m_SkyboxCubeMapImageView, nullptr);
+
+    delete m_pSkyboxCubeMapImage;
 
     delete m_pDescriptorManager;
     delete m_pModel;
