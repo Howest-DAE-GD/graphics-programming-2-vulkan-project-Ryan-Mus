@@ -51,6 +51,7 @@ private:
 	void createLightBuffer();
     void createCommandBuffers();
     void createSkyboxCubeMap();
+	void createIrradianceMap();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void updateUniformBuffer(uint32_t currentImage);
 	void updateLightBuffer(uint32_t currentImage);
@@ -175,6 +176,10 @@ private:
     Image* m_pSkyboxCubeMapImage;
     std::array<VkImageView,6> m_SkyboxCubeMapImageViews;
 	VkImageView m_SkyboxCubeMapImageView;
+
+	Image* m_pIrradianceMapImage;
+	std::array<VkImageView, 6> m_IrradianceMapImageViews;
+	VkImageView m_IrradianceMapImageView;
 
     // Paths
     const std::string MODEL_PATH_ = "models/glTF/Sponza.gltf";

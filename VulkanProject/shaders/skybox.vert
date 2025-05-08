@@ -2,8 +2,8 @@
 
 // Push Constants for View and Projection Matrices
 layout(push_constant) uniform PushConstants {
-    mat4 view;
-    mat4 projection;
+    mat4 view;        // Rotation-only view matrix for cube face
+    mat4 projection;  // Perspective projection matrix
 } pushConstants;
 
 // Hardcoded vertices for a unit cube
@@ -41,6 +41,7 @@ void main() {
     fragLocalPosition = g_vertexPositions[gl_VertexIndex];
 
     // Transform the vertex position using the view and projection matrices
+    // The view matrix should only rotate the cube face, not translate it
     vec4 worldPosition = vec4(fragLocalPosition, 1.0);
     gl_Position = pushConstants.projection * pushConstants.view * worldPosition;
 }

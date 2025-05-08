@@ -28,6 +28,7 @@ layout(std430,binding = 5) readonly buffer LightsBuffer {
 };
 
 layout(binding = 6) uniform samplerCube skyboxSampler;
+layout(binding = 7) uniform samplerCube irradianceSampler;
 
 const float PI = 3.14159265359;
 
@@ -49,21 +50,22 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
     return num / denom;
 }
 
-float GeometrySchlickGGX(float NdotV, float roughness)
+float GeometrySchlickGGX(float NdotV, float roughness, bool isIndirect)
 {
     float r = (roughness + 1.0);
-    float k = (r*r) / 8.0;
+    float k = isIndirect ? (r * r) / 2.0 : (r * r) / 8.0; // Adjust k based on light type
     float num   = NdotV;
     float denom = NdotV * (1.0 - k) + k;
     return num / denom;
 }
 
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness, bool isIndirect)
 {
     float NdotV = max(dot(N, V), 0.0);
     float NdotL = max(dot(N, L), 0.0);
-    float ggx2  = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1  = GeometrySchlickGGX(NdotL, roughness);
+    float ggx2  = GeometrySchlickGGX(NdotV, roughness, isIndirect);
+    float ggx1  = GeometrySchlickGGX(NdotL, roughness, isIndirect);
     return ggx1 * ggx2;
 }
 
@@ -76,16 +78,6 @@ float calculateAttenuation(float distance, float radius)
 {
     float att = clamp(1.0 - (distance * distance) / (radius * radius), 0.0, 1.0);
     return att * att;
-}
-
-vec3 ACESFilm(vec3 x)
-{
-    float a = 2.51f;
-    float b = 0.03f;
-    float c = 2.43f;
-    float d = 0.59f;
-    float e = 0.14f;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
 // Vulkan-specific world position reconstruction
@@ -104,27 +96,6 @@ vec3 reconstructWorldPosition(float depth, vec2 texCoord)
     return worldPosH.xyz / worldPosH.w;
 }
 
-// Alternative world position reconstruction - try this if the above doesn't work
-vec3 reconstructWorldPosition_Alt(float depth, vec2 texCoord)
-{
-    // Convert UV to NDC (-1 to 1)
-    vec2 ndcXY = (texCoord * 2.0 - 1.0);
-    
-    // Create ray from camera position through pixel
-    // Vulkan uses reverse Z depth, so we need to handle that
-    vec4 clipPos = vec4(ndcXY.x, ndcXY.y, depth, 1.0);
-    
-    // Get inverse view projection
-    mat4 invViewProj = inverse(ubo.proj * ubo.view);
-    
-    // Transform to world space
-    vec4 worldPosH = invViewProj * clipPos;
-    
-    // Perspective division
-    vec3 worldPos = worldPosH.xyz / worldPosH.w;
-    
-    return worldPos;
-}
 
 // Grid visualization function
 vec3 visualizeWorldSpaceGrid(vec3 worldPos)
@@ -202,14 +173,18 @@ void main()
     
     const vec3 normalMap = normalize(texture(normalSampler, fragTexCoord).rgb * 2.0 - 1.0);
     const vec3 N = normalMap;
-    
+   
+    // Sample irradiance map using world-space normal
+    vec3 irradiance = texture(irradianceSampler, N).rgb;
+
     const vec4 metallicRoughness = texture(metallicRoughnessSampler, fragTexCoord);
     const float metallic = metallicRoughness.b;
     const float roughness = metallicRoughness.g;
     
     vec3 finalColor;
     
-    if (DEBUG_MODE == 0) {
+    if (DEBUG_MODE == 0) 
+    {
         // Standard PBR lighting - now using lights array from binding 5
         vec3 V = normalize(ubo.cameraPosition - worldPos);
         vec3 F0 = vec3(0.04); 
@@ -218,7 +193,8 @@ void main()
         vec3 Lo = vec3(0.0);
         
         // Process all lights in the light buffer
-        for (uint i = 0; i < lightCount; i++) {
+        for (uint i = 0; i < lightCount; i++) 
+        {
             Light light = lights[i];
             
             vec3 L = normalize(light.position - worldPos);
@@ -229,7 +205,7 @@ void main()
             vec3 H = normalize(V + L);
             
             float NDF = DistributionGGX(N, H, roughness);
-            float G   = GeometrySmith(N, V, L, roughness);
+            float G   = GeometrySmith(N, V, L, roughness,false);
             vec3 F    = FresnelSchlick(max(dot(H, V), 0.0), F0);
             
             vec3 kS = F;
@@ -243,11 +219,18 @@ void main()
             float NdotL = max(dot(N, L), 0.0);
             Lo += (kD * albedo / PI + specular) * radiance * NdotL;
         }
-        
-        vec3 ambient = vec3(0.03) * albedo;
-        
+
+        // Ambient lighting
+        vec3 Find = FresnelSchlick(max(dot(N, V), 0.0), F0);
+        vec3 kS = Find;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;
+
+        vec3 diffuse = irradiance * albedo;
+        vec3 ambient = kD * diffuse * 3;
+
+                
         finalColor = ambient + Lo;
-        //finalColor = ACESFilm(finalColor);
     }
     else if (DEBUG_MODE == 1) {
         // World position visualization with grid

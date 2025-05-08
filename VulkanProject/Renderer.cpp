@@ -128,9 +128,9 @@ void Renderer::initVulkan()
 
     createLightBuffer();
 
-	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 30.0f, 25.0f });
-    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 30.0f, 25.0f });
-    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 30.0f, 25.0f });
+	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 1.0f, 5.0f });
+    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 1.0f, 5.0f });
+    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 1.0f, 5.0f });
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -144,6 +144,7 @@ void Renderer::initVulkan()
     m_pDescriptorManager = new DescriptorManager(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT, materialCount);
 
     createSkyboxCubeMap();
+	createIrradianceMap();
     
     // Create descriptor set layouts and pools    
     m_pDescriptorManager->createDescriptorSetLayout();
@@ -187,6 +188,7 @@ void Renderer::initVulkan()
 			m_pLightBuffers[frameIndex]->get(),
 			sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t),
 			m_SkyboxCubeMapImageView, // Skybox cube map image view
+			m_IrradianceMapImageView, // Irradiance map image view
             Texture::getTextureSampler() // Ensure this sampler is created
         );
     }
@@ -421,7 +423,7 @@ void Renderer::renderToCubeMap(
 
         VkImageMemoryBarrier2 barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; // <-- This might be incorrect
         barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         barrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
         barrier.srcAccessMask = VK_ACCESS_2_NONE;
@@ -435,7 +437,7 @@ void Renderer::renderToCubeMap(
         dependencyInfo.imageMemoryBarrierCount = 1;
         dependencyInfo.pImageMemoryBarriers = &barrier;
 
-        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+		vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 
         // Begin dynamic rendering
         VkRenderingAttachmentInfo colorAttachment{};
@@ -515,6 +517,7 @@ void Renderer::renderToCubeMap(
         barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
         barrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
         barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
 
         vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
     }
@@ -689,6 +692,14 @@ void Renderer::createSkyboxCubeMap()
         }
     }
 
+	m_pSkyboxCubeMapImage->transitionImageLayout(
+		m_pCommandPool,
+		m_pDevice->getGraphicsQueue(),
+		VK_FORMAT_R32G32B32A32_SFLOAT,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	);
+
     // **8. Render to Cube Map**
     renderToCubeMap(
         pHDRIImage,
@@ -704,6 +715,11 @@ void Renderer::createSkyboxCubeMap()
     vkDestroyImageView(m_pDevice->get(), pHDRIImageView, nullptr);
     delete pHDRIImage;
 
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        vkDestroyImageView(m_pDevice->get(), m_SkyboxCubeMapImageViews[face], nullptr);
+    }
+
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = m_pSkyboxCubeMapImage->getImage();
@@ -718,6 +734,90 @@ void Renderer::createSkyboxCubeMap()
 	if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &m_SkyboxCubeMapImageView) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create image view for cube map!");
 	}
+
+    // Transition Skybox Cube Map to SHADER_READ_ONLY_OPTIMAL
+    m_pSkyboxCubeMapImage->transitionImageLayout(
+        m_pCommandPool,
+        m_pDevice->getGraphicsQueue(),
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_LAYOUT_UNDEFINED, // Assuming it's in UNDEFINED layout initially
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    );
+}
+
+void Renderer::createIrradianceMap()
+{
+    // Create the irradiance map image
+    m_pIrradianceMapImage = new Image(m_pDevice, m_VmaAllocator);
+    m_pIrradianceMapImage->createImage(
+        128,
+        128,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+        6,
+        VMA_MEMORY_USAGE_GPU_ONLY
+    );
+
+    // Transition Irradiance Map to COLOR_ATTACHMENT_OPTIMAL for rendering
+    m_pIrradianceMapImage->transitionImageLayout(
+        m_pCommandPool,
+        m_pDevice->getGraphicsQueue(),
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    );
+
+	for (int face = 0; face < 6; ++face)
+	{
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = m_pIrradianceMapImage->getImage();
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = face;
+        viewInfo.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &m_IrradianceMapImageViews[face]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create image views for cube map faces!");
+        }
+	}
+
+    // Render to Cube Map
+    renderToCubeMap(
+        m_pSkyboxCubeMapImage,
+        m_SkyboxCubeMapImageView,
+        m_pIrradianceMapImage,
+        m_IrradianceMapImageViews,
+        Texture::getTextureSampler(),
+        "shaders/skybox.vert.spv",
+        "shaders/irradiance.frag.spv"
+    );
+
+	// Cleanup
+	for (int face = 0; face < 6; ++face)
+	{
+		vkDestroyImageView(m_pDevice->get(), m_IrradianceMapImageViews[face], nullptr);
+	}
+
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = m_pIrradianceMapImage->getImage();
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    viewInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 6;
+
+    if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &m_IrradianceMapImageView) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create image view for cube map!");
+    }
 }
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
@@ -1352,6 +1452,7 @@ void Renderer::recreateSwapChain()
             m_pLightBuffers[i]->get(),
             (sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t)),
 			m_SkyboxCubeMapImageView,
+            m_IrradianceMapImageView,
             Texture::getTextureSampler()
         );
 
@@ -1686,11 +1787,9 @@ void Renderer::cleanup()
 		delete lightBuffer;
 	}
 
-    for (uint32_t face = 0; face < 6; ++face)
-    {
-        vkDestroyImageView(m_pDevice->get(), m_SkyboxCubeMapImageViews[face], nullptr);
-    }
-
+    vkDestroyImageView(m_pDevice->get(), m_IrradianceMapImageView, nullptr);
+    delete m_pIrradianceMapImage;
+   
 	vkDestroyImageView(m_pDevice->get(), m_SkyboxCubeMapImageView, nullptr);
 
     delete m_pSkyboxCubeMapImage;

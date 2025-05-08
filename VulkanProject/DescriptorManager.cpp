@@ -305,14 +305,23 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
 	skyboxBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	skyboxBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 7> bindings = { 
+	//Binding for irradiance cubemap (binding = 7)
+	VkDescriptorSetLayoutBinding irradianceBinding{};
+	irradianceBinding.binding = 7;
+	irradianceBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	irradianceBinding.descriptorCount = 1;
+	irradianceBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	irradianceBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 8> bindings = { 
         diffuseBinding,
         normalBinding,
         metallicRoughnessBinding,
         depthBinding,
         uboLayoutBinding,
         lightBufferBinding,
-        skyboxBinding
+        skyboxBinding,
+		irradianceBinding
     };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -342,6 +351,7 @@ void DescriptorManager::createFinalPassDescriptorSet(
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
 	VkImageView skyboxImageView,
+	VkImageView irradianceImageView,
     VkSampler sampler)
 {
     // Allocate the descriptor set
@@ -392,7 +402,12 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	skyboxImageInfo.imageView = skyboxImageView;
 	skyboxImageInfo.sampler = sampler;
 
-    std::array<VkWriteDescriptorSet, 7> descriptorWrites{};
+	VkDescriptorImageInfo irradianceImageInfo{};
+	irradianceImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	irradianceImageInfo.imageView = irradianceImageView;
+	irradianceImageInfo.sampler = sampler;
+
+    std::array<VkWriteDescriptorSet, 8> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -443,6 +458,13 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	descriptorWrites[6].descriptorCount = 1;
 	descriptorWrites[6].pImageInfo = &skyboxImageInfo;
 
+	descriptorWrites[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[7].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[7].dstBinding = 7;
+	descriptorWrites[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[7].descriptorCount = 1;
+	descriptorWrites[7].pImageInfo = &irradianceImageInfo;
+
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
@@ -462,6 +484,7 @@ void DescriptorManager::updateFinalPassDescriptorSet(
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
 	VkImageView skyboxImageView,
+	VkImageView irradianceImageView,
     VkSampler sampler)
 {
     // Update the descriptor set with the new G-Buffer images
@@ -500,7 +523,13 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	skyboxImageInfo.imageView = skyboxImageView;
 	skyboxImageInfo.sampler = sampler;
 
-    std::array<VkWriteDescriptorSet, 7> descriptorWrites{};
+	VkDescriptorImageInfo irradianceImageInfo{};
+	irradianceImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	irradianceImageInfo.imageView = irradianceImageView;
+	irradianceImageInfo.sampler = sampler;
+
+
+    std::array<VkWriteDescriptorSet, 8> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -548,6 +577,15 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	descriptorWrites[6].dstSet = m_FinalPassDescriptorSets[frameIndex];
 	descriptorWrites[6].dstBinding = 6;
 	descriptorWrites[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[6].descriptorCount = 1;
+	descriptorWrites[6].pImageInfo = &skyboxImageInfo;
+
+	descriptorWrites[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[7].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[7].dstBinding = 7;
+	descriptorWrites[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[7].descriptorCount = 1;
+	descriptorWrites[7].pImageInfo = &irradianceImageInfo;
 
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }

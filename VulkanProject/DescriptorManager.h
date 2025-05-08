@@ -30,6 +30,7 @@ public:
         VkBuffer lightBuffer,
         size_t lightBufferObjectSize,
 		VkImageView skyboxImageView,
+		VkImageView irradianceImageView,
         VkSampler sampler
     );
     void updateFinalPassDescriptorSet(
@@ -43,6 +44,7 @@ public:
         VkBuffer lightBuffer,
         size_t lightBufferObjectSize,
 		VkImageView skyboxImageView,
+		VkImageView irradianceImageView,
         VkSampler sampler
     );
 
