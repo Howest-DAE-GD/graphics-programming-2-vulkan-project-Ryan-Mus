@@ -17,7 +17,13 @@ void main() {
     int sampleCount = 0;
 
     // Tangent space basis
-    vec3 up = abs(N.y) > 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+    vec3 up = vec3(0.0, -1.0, 0.0);
+
+    // Flip the up vector if the dominant axis of N is negative
+    if (N.y < 0.0) {
+        up = -up;
+    }
+
     vec3 right = normalize(cross(up, N));
     up = normalize(cross(N, right));
     mat3 TBN = mat3(right, up, N);

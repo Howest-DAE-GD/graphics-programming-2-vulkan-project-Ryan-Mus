@@ -183,5 +183,5 @@ private:
 
     // Paths
     const std::string MODEL_PATH_ = "models/glTF/Sponza.gltf";
-	const std::string HDRI_PATH_ = "default/pretoria_gardens_2k.hdr";
+	const std::string HDRI_PATH_ = "default/goegap_road_2k.hdr";
 };

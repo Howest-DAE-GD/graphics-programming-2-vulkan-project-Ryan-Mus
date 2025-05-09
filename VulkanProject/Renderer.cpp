@@ -750,8 +750,8 @@ void Renderer::createIrradianceMap()
     // Create the irradiance map image
     m_pIrradianceMapImage = new Image(m_pDevice, m_VmaAllocator);
     m_pIrradianceMapImage->createImage(
-        128,
-        128,
+        64,
+        64,
         VK_FORMAT_R32G32B32A32_SFLOAT,
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
