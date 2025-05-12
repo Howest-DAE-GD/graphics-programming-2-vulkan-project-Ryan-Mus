@@ -128,9 +128,9 @@ void Renderer::initVulkan()
 
     createLightBuffer();
 
-	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 1.0f, 5.0f });
-    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 1.0f, 5.0f });
-    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 1.0f, 5.0f });
+	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 50.0f, 10.0f });
+    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 50.0f, 10.0f });
+    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 50.0f, 10.0f });
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
