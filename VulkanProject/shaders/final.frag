@@ -30,6 +30,8 @@ layout(std430,binding = 5) readonly buffer LightsBuffer {
 layout(binding = 6) uniform samplerCube skyboxSampler;
 layout(binding = 7) uniform samplerCube irradianceSampler;
 
+layout(binding = 8) uniform sampler2D shadowMapSampler;
+
 const float PI = 3.14159265359;
 
 // Debug visualization mode - switch between different tests

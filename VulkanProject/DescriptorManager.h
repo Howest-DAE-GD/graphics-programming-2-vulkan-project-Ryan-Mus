@@ -29,6 +29,7 @@ public:
         size_t uniformBufferObjectSize,
         VkBuffer lightBuffer,
         size_t lightBufferObjectSize,
+		VkImageView shadowMapImageView,
 		VkImageView skyboxImageView,
 		VkImageView irradianceImageView,
         VkSampler sampler
@@ -43,6 +44,7 @@ public:
         size_t uniformBufferObjectSize,
         VkBuffer lightBuffer,
         size_t lightBufferObjectSize,
+		VkImageView shadowMapImageView,
 		VkImageView skyboxImageView,
 		VkImageView irradianceImageView,
         VkSampler sampler

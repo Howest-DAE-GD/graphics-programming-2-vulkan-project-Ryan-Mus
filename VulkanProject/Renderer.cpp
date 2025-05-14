@@ -187,6 +187,7 @@ void Renderer::initVulkan()
             sizeof(UniformBufferObject),
 			m_pLightBuffers[frameIndex]->get(),
 			sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t),
+			m_GBuffers[frameIndex].shadowMapImageView, // Shadow map image view
 			m_SkyboxCubeMapImageView, // Skybox cube map image view
 			m_IrradianceMapImageView, // Irradiance map image view
             Texture::getTextureSampler() // Ensure this sampler is created
@@ -235,7 +236,7 @@ void Renderer::initVulkan()
         .build();
 
 	//Create the shadow map pipeline
-	/*m_pShadowMapPipeline = GraphicsPipelineBuilder()
+	m_pShadowMapPipeline = GraphicsPipelineBuilder()
 		.setDevice(m_pDevice->get())
 		.setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
 		.setSwapChainExtent(m_pSwapChain->getExtent())
@@ -247,7 +248,11 @@ void Renderer::initVulkan()
 		.enableDepthTest(true)
 		.enableDepthWrite(true)
 		.setDepthCompareOp(VK_COMPARE_OP_LESS)
-		.build();*/
+        //.setRasterizationState(VK_CULL_MODE_NONE)
+		.setPushConstantRange(sizeof(glm::mat4) * 2) // View and projection matrices
+		.build();
+
+	renderShadowMap();
 
     // Create the final pass graphics pipeline
     m_pFinalPipeline = GraphicsPipelineBuilder()
@@ -836,11 +841,168 @@ void Renderer::createIrradianceMap()
 
 void Renderer::renderShadowMap()
 {
-    for (int i{}; i < MAX_FRAMES_IN_FLIGHT; ++i)
-    {
-   
+	// TODO update the lightview and proj and light direction to be members of the class
+    // 1. Compute light matrices (already present)
+    auto [aabbMin, aabbMax] = m_pModel->getAABB();
+    glm::vec3 sceneCenter = (aabbMin + aabbMax) * 0.5f;
+    glm::vec3 lightDirection = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
+
+    std::vector<glm::vec3> corners = {
+        {aabbMin.x, aabbMin.y, aabbMin.z},
+        {aabbMax.x, aabbMin.y, aabbMin.z},
+        {aabbMin.x, aabbMax.y, aabbMin.z},
+        {aabbMax.x, aabbMax.y, aabbMin.z},
+        {aabbMin.x, aabbMin.y, aabbMax.z},
+        {aabbMax.x, aabbMin.y, aabbMax.z},
+        {aabbMin.x, aabbMax.y, aabbMax.z},
+        {aabbMax.x, aabbMax.y, aabbMax.z},
+    };
+
+    float minProj = std::numeric_limits<float>::max();
+    float maxProj = std::numeric_limits<float>::lowest();
+    for (const glm::vec3& corner : corners) {
+        float proj = glm::dot(corner, lightDirection);
+        minProj = std::min(minProj, proj);
+        maxProj = std::max(maxProj, proj);
     }
+
+    float distance = maxProj - glm::dot(sceneCenter, lightDirection);
+    glm::vec3 lightPos = sceneCenter - lightDirection * distance;
+    glm::vec3 up = glm::abs(glm::dot(lightDirection, glm::vec3(0.f, 1.f, 0.f))) > 0.99f
+        ? glm::vec3(0.f, 0.f, 1.f)
+        : glm::vec3(0.f, 1.f, 0.f);
+
+    glm::mat4 lightView = glm::lookAt(lightPos, sceneCenter, up);
+
+    glm::vec3 minLS(std::numeric_limits<float>::max());
+    glm::vec3 maxLS(-std::numeric_limits<float>::max());
+    for (const glm::vec3& corner : corners) {
+        glm::vec3 tr = glm::vec3(lightView * glm::vec4(corner, 1.0f));
+        minLS = glm::min(minLS, tr);
+        maxLS = glm::max(maxLS, tr);
+    }
+
+    float nearZ = 0.0f;
+    float farZ = maxLS.z - minLS.z;
+    glm::mat4 lightProj = glm::ortho(
+        minLS.x, maxLS.x,
+        minLS.y, maxLS.y,
+        nearZ, farZ
+    );
+    lightProj[1][1] *= -1.0f;
+
+    // 2. For each frame in flight, render the shadow map
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        // Begin single time command buffer (or use your frame's command buffer if you want to batch)
+        VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+
+        // Transition shadow map image to depth attachment optimal
+        transitionImageLayout(
+            commandBuffer,
+            m_GBuffers[i].pShadowMapImage->getImage(),
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_ASPECT_DEPTH_BIT
+        );
+
+        // Set up rendering info
+        VkRenderingAttachmentInfo depthAttachment{};
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.imageView = m_GBuffers[i].shadowMapImageView;
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.clearValue.depthStencil = { 1.0f, 0 };
+
+        VkRenderingInfo renderingInfo{};
+        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        renderingInfo.renderArea.offset = { 0, 0 };
+        renderingInfo.renderArea.extent = { m_GBuffers[i].pShadowMapImage->getWidth(), m_GBuffers[i].pShadowMapImage->getHeight() };
+        renderingInfo.layerCount = 1;
+        renderingInfo.colorAttachmentCount = 0;
+        renderingInfo.pDepthAttachment = &depthAttachment;
+
+        vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+        // Bind shadow map pipeline
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pShadowMapPipeline->get());
+
+        // Bind vertex and index buffers
+        VkBuffer vertexBuffers[] = { m_pModel->getVertexBuffer() };
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, m_pModel->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+        // Set viewport and scissor
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(m_GBuffers[i].pShadowMapImage->getWidth());
+        viewport.height = static_cast<float>(m_GBuffers[i].pShadowMapImage->getHeight());
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { m_GBuffers[i].pShadowMapImage->getWidth(), m_GBuffers[i].pShadowMapImage->getHeight() };
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        // Push constants or bind UBO for lightView and lightProj as needed by your shadow map shaders
+        struct ShadowPushConstants {
+            glm::mat4 lightView;
+            glm::mat4 lightProj;
+        } shadowPC;
+        shadowPC.lightView = lightView;
+        shadowPC.lightProj = lightProj;
+
+        vkCmdPushConstants(
+            commandBuffer,
+            m_pShadowMapPipeline->getPipelineLayout(),
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,
+            sizeof(ShadowPushConstants),
+            &shadowPC
+        );
+
+        // Draw all submeshes
+        const auto& submeshes = m_pModel->getSubmeshes();
+        for (const auto& submesh : submeshes)
+        {
+            vkCmdDrawIndexed(
+                commandBuffer,
+                submesh.indexCount,
+                1,
+                submesh.indexStart,
+                0,
+                0
+            );
+        }
+
+        vkCmdEndRendering(commandBuffer);
+
+        // Transition shadow map image to shader read optimal for later use
+        transitionImageLayout(
+            commandBuffer,
+            m_GBuffers[i].pShadowMapImage->getImage(),
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_IMAGE_ASPECT_DEPTH_BIT
+        );
+        // End and submit
+        m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+    }    
 }
+
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
@@ -1473,6 +1635,7 @@ void Renderer::recreateSwapChain()
             sizeof(UniformBufferObject),
             m_pLightBuffers[i]->get(),
             (sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t)),
+			m_GBuffers[i].shadowMapImageView,
 			m_SkyboxCubeMapImageView,
             m_IrradianceMapImageView,
             Texture::getTextureSampler()

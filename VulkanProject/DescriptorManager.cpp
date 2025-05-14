@@ -313,7 +313,15 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
 	irradianceBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	irradianceBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 8> bindings = { 
+	//Binding for shadow map (binding = 8)
+	VkDescriptorSetLayoutBinding shadowMapBinding{};
+	shadowMapBinding.binding = 8;
+	shadowMapBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	shadowMapBinding.descriptorCount = 1;
+	shadowMapBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	shadowMapBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 9> bindings = { 
         diffuseBinding,
         normalBinding,
         metallicRoughnessBinding,
@@ -321,7 +329,8 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
         uboLayoutBinding,
         lightBufferBinding,
         skyboxBinding,
-		irradianceBinding
+		irradianceBinding,
+		shadowMapBinding
     };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -350,6 +359,7 @@ void DescriptorManager::createFinalPassDescriptorSet(
     size_t uniformBufferObjectSize,
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
+	VkImageView shadowMapImageView,
 	VkImageView skyboxImageView,
 	VkImageView irradianceImageView,
     VkSampler sampler)
@@ -407,7 +417,12 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	irradianceImageInfo.imageView = irradianceImageView;
 	irradianceImageInfo.sampler = sampler;
 
-    std::array<VkWriteDescriptorSet, 8> descriptorWrites{};
+	VkDescriptorImageInfo shadowMapImageInfo{};
+	shadowMapImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	shadowMapImageInfo.imageView = shadowMapImageView;
+	shadowMapImageInfo.sampler = sampler;
+
+    std::array<VkWriteDescriptorSet, 9> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -465,6 +480,13 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	descriptorWrites[7].descriptorCount = 1;
 	descriptorWrites[7].pImageInfo = &irradianceImageInfo;
 
+	descriptorWrites[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[8].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[8].dstBinding = 8;
+	descriptorWrites[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[8].descriptorCount = 1;
+	descriptorWrites[8].pImageInfo = &shadowMapImageInfo;
+
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
@@ -483,6 +505,7 @@ void DescriptorManager::updateFinalPassDescriptorSet(
     size_t uniformBufferObjectSize,
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
+	VkImageView shadowMapImageView,
 	VkImageView skyboxImageView,
 	VkImageView irradianceImageView,
     VkSampler sampler)
@@ -527,6 +550,12 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	irradianceImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	irradianceImageInfo.imageView = irradianceImageView;
 	irradianceImageInfo.sampler = sampler;
+
+	VkDescriptorImageInfo shadowMapImageInfo{};
+	shadowMapImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	shadowMapImageInfo.imageView = shadowMapImageView;
+	shadowMapImageInfo.sampler = sampler;
+	// Update the descriptor set with the new G-Buffer images
 
 
     std::array<VkWriteDescriptorSet, 8> descriptorWrites{};
