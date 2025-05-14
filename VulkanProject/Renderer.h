@@ -52,6 +52,7 @@ private:
     void createCommandBuffers();
     void createSkyboxCubeMap();
 	void createIrradianceMap();
+    void renderShadowMap();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void updateUniformBuffer(uint32_t currentImage);
 	void updateLightBuffer(uint32_t currentImage);
@@ -121,6 +122,9 @@ private:
 
         Image* pDepthImage;
 		VkImageView depthImageView;
+
+		Image* pShadowMapImage;
+		VkImageView shadowMapImageView;
     };
 
 	struct Light
@@ -143,6 +147,7 @@ private:
     GraphicsPipeline* m_pGraphicsPipeline;
 	GraphicsPipeline* m_pDepthPipeline;
 	GraphicsPipeline* m_pFinalPipeline;
+	GraphicsPipeline* m_pShadowMapPipeline;
 	ComputePipeline* m_pToneMappingPipeline;
     CommandPool* m_pCommandPool;
     SynchronizationObjects* m_pSyncObjects;

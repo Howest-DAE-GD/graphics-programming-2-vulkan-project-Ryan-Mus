@@ -25,6 +25,9 @@ Model::~Model()
 
 void Model::loadModel()
 {
+    m_BoundingBoxMin = glm::vec3(FLT_MAX);
+    m_BoundingBoxMax = glm::vec3(-FLT_MAX);
+
     spdlog::debug("Loading model from path: {}", m_ModelPath);
     Assimp::Importer importer;
 
@@ -257,6 +260,11 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
     submesh.indexCount = static_cast<uint32_t>(m_Indices.size()) - submesh.indexStart;
     submesh.bboxMin = bboxMin;
     submesh.bboxMax = bboxMax;
+
+    // Update model AABB
+    m_BoundingBoxMin = glm::min(m_BoundingBoxMin, bboxMin);
+    m_BoundingBoxMax = glm::max(m_BoundingBoxMax, bboxMax);
+
 
     // Process material (existing code)
     if (mesh->mMaterialIndex >= 0)

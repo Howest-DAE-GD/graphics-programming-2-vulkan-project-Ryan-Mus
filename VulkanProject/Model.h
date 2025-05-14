@@ -84,6 +84,11 @@ public:
 
     std::vector<Submesh> getSubmeshes() const { return m_Submeshes; }
     std::vector<Material*> getMaterials() const { return m_Materials; }
+    std::pair<glm::vec3, glm::vec3> getAABB() const 
+    {
+        return { m_BoundingBoxMin, m_BoundingBoxMax };
+    }
+
 private:
     void processNode(aiNode* node, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 parentTransform);
     void processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 transform, glm::vec3 scale);
@@ -103,5 +108,7 @@ private:
 
     std::vector<Submesh> m_Submeshes;
     std::vector<Material*> m_Materials;
+	glm::vec3 m_BoundingBoxMin;
+	glm::vec3 m_BoundingBoxMax;
 };
 

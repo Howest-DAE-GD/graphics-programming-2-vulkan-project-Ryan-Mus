@@ -128,9 +128,9 @@ void Renderer::initVulkan()
 
     createLightBuffer();
 
-	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 50.0f, 10.0f });
-    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 50.0f, 10.0f });
-    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 50.0f, 10.0f });
+	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 5.0f, 10.0f });
+    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 5.0f, 10.0f });
+    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 5.0f, 10.0f });
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -234,6 +234,20 @@ void Renderer::initVulkan()
 		.setDepthCompareOp(VK_COMPARE_OP_LESS)
         .build();
 
+	//Create the shadow map pipeline
+	/*m_pShadowMapPipeline = GraphicsPipelineBuilder()
+		.setDevice(m_pDevice->get())
+		.setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
+		.setSwapChainExtent(m_pSwapChain->getExtent())
+		.setDepthFormat(findDepthFormat())
+		.setVertexInputBindingDescription(Vertex::getBindingDescription())
+		.setVertexInputAttributeDescriptions(Vertex::getDepthAttributeDescriptions())
+		.setShaderPaths("shaders/shadow_map.vert.spv", "shaders/shadow_map.frag.spv")
+		.setAttachmentCount(1)
+		.enableDepthTest(true)
+		.enableDepthWrite(true)
+		.setDepthCompareOp(VK_COMPARE_OP_LESS)
+		.build();*/
 
     // Create the final pass graphics pipeline
     m_pFinalPipeline = GraphicsPipelineBuilder()
@@ -817,6 +831,14 @@ void Renderer::createIrradianceMap()
 
     if (vkCreateImageView(m_pDevice->get(), &viewInfo, nullptr, &m_IrradianceMapImageView) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create image view for cube map!");
+    }
+}
+
+void Renderer::renderShadowMap()
+{
+    for (int i{}; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+   
     }
 }
 
@@ -1618,6 +1640,23 @@ void Renderer::createGBuffer()
             depthFormat,
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+
+		// Create Shadow map image
+		m_GBuffers[i].pShadowMapImage = new Image(m_pDevice, m_VmaAllocator);
+		m_GBuffers[i].pShadowMapImage->createImage(m_pSwapChain->getExtent().width,
+			m_pSwapChain->getExtent().height,
+            depthFormat,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VMA_MEMORY_USAGE_GPU_ONLY);
+		m_GBuffers[i].shadowMapImageView = m_GBuffers[i].pShadowMapImage->createImageView(
+			depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+		m_GBuffers[i].pShadowMapImage->transitionImageLayout(m_pCommandPool,
+			m_pDevice->getGraphicsQueue(),
+			depthFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     }
 }
 
@@ -1688,6 +1727,9 @@ void Renderer::cleanupSwapChain()
 
         vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].metallicRoughnessImageView, nullptr);
         delete m_GBuffers[i].pMetallicRougnessImage;
+
+		vkDestroyImageView(m_pDevice->get(), m_GBuffers[i].shadowMapImageView, nullptr);
+		delete m_GBuffers[i].pShadowMapImage;
 
 		vkDestroyImageView(m_pDevice->get(), m_HDRImageView[i], nullptr);
 		delete m_pHDRImage[i];

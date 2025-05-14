@@ -33,7 +33,7 @@ layout(binding = 7) uniform samplerCube irradianceSampler;
 const float PI = 3.14159265359;
 
 // Debug visualization mode - switch between different tests
-#define DEBUG_MODE 0  // 0=normal render, 1=world pos, 2=debug view
+#define DEBUG_MODE 0 // 0=normal render, 1=world pos, 2=debug view
 
 // Unaltered PBR functions from original shader
 float DistributionGGX(vec3 N, vec3 H, float roughness)
@@ -255,35 +255,8 @@ void main()
     }
     else if (DEBUG_MODE == 2) {
         // Debug visualization - show raw components
-        
-        // Top third: raw depth values
-        if (fragTexCoord.y < 0.33) {
-            finalColor = vec3(depth);
-        }
-        // Middle third: camera space positions
-        else if (fragTexCoord.y < 0.66) {
-            vec4 clipPos = vec4(fragTexCoord * 2.0 - 1.0, depth, 1.0);
-            vec4 viewPos = inverse(ubo.proj) * clipPos;
-            viewPos /= viewPos.w;
-            finalColor = normalize(viewPos.xyz) * 0.5 + 0.5;
-        }
-        // Bottom third: world positions as colors
-        else {
-            // Normalize world position to a visible color range
-            finalColor = normalize(worldPos) * 0.5 + 0.5;
-        }
-        
-        // Show coordinate cross
-        float lineWidth = 0.005;
-        if (abs(fragTexCoord.x - 0.5) < lineWidth || abs(fragTexCoord.y - 0.5) < lineWidth) {
-            finalColor = vec3(1.0);
-        }
-        
-        // Show light count in bottom right corner
-        if (fragTexCoord.x > 0.9 && fragTexCoord.y > 0.9) {
-            // Visualize number of lights (green for lights, red for no lights)
-            finalColor = lightCount > 0 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-        }
+        // Normalize world position to a visible color range
+        finalColor = normalize(worldPos) * 0.5 + 0.5;
     }
     
     outColor = vec4(finalColor, 1.0);
