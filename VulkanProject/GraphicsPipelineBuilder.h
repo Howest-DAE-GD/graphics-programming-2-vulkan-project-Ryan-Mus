@@ -24,6 +24,7 @@ public:
 	GraphicsPipelineBuilder& setDepthCompareOp(VkCompareOp compareOp);
 	GraphicsPipelineBuilder& setRasterizationState(VkCullModeFlags cullMode);
 	GraphicsPipelineBuilder& setPushConstantRange(size_t size);
+	GraphicsPipelineBuilder& setPushConstantFlags(VkShaderStageFlags stageFlags);
 
     GraphicsPipeline* build();
 
@@ -44,6 +45,7 @@ private:
 	VkCompareOp m_DepthCompareOp{ VK_COMPARE_OP_LESS };
 	VkCullModeFlags m_CullMode{ VK_CULL_MODE_BACK_BIT };
 	size_t m_PushConstantSize{ 0 };
+	VkShaderStageFlags m_PushConstantStageFlags{ VK_SHADER_STAGE_VERTEX_BIT };
     bool m_HasVertexInput{ false };
 };
 

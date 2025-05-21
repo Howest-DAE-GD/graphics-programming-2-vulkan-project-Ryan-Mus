@@ -257,7 +257,7 @@ void Renderer::initVulkan()
     // Create the final pass graphics pipeline
     m_pFinalPipeline = GraphicsPipelineBuilder()
         .setDevice(m_pDevice->get())
-        .setDescriptorSetLayout(m_pDescriptorManager->getFinalPassDescriptorSetLayout()) // Updated
+        .setDescriptorSetLayout(m_pDescriptorManager->getFinalPassDescriptorSetLayout())
         .setSwapChainExtent(m_pSwapChain->getExtent())
         .setColorFormats({ VK_FORMAT_R32G32B32A32_SFLOAT })
         .setDepthFormat(VK_FORMAT_UNDEFINED)
@@ -267,6 +267,8 @@ void Renderer::initVulkan()
         .setAttachmentCount(1)
         .enableDepthTest(false)
         .setRasterizationState(VK_CULL_MODE_NONE)
+        .setPushConstantRange(sizeof(glm::mat4) * 2)
+		.setPushConstantFlags(VK_SHADER_STAGE_FRAGMENT_BIT)
         .build();
 
 	m_pToneMappingPipeline = ComputePipelineBuilder()
@@ -891,6 +893,10 @@ void Renderer::renderShadowMap()
     );
     lightProj[1][1] *= -1.0f;
 
+    // Store the matrices in the Renderer class
+    m_LightProj = lightProj;
+    m_LightView = lightView;
+
     // 2. For each frame in flight, render the shadow map
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
@@ -1372,6 +1378,24 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
             &m_pDescriptorManager->getFinalPassDescriptorSets()[m_currentFrame],
             0,
             nullptr
+        );
+
+        // Push constants for lightProj and lightView matrices
+        struct SunMatrices {
+            glm::mat4 lightProj;
+            glm::mat4 lightView;
+        } sunMatrices;
+
+        sunMatrices.lightProj = m_LightProj;
+        sunMatrices.lightView = m_LightView;
+
+        vkCmdPushConstants(
+            commandBuffer,
+            m_pFinalPipeline->getPipelineLayout(),
+            VK_SHADER_STAGE_FRAGMENT_BIT, // Make sure it matches the shader stage where it's used
+            0,
+            sizeof(SunMatrices),
+            &sunMatrices
         );
 
         // Set viewport and scissor

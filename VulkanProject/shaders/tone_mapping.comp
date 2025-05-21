@@ -13,8 +13,8 @@ const float D = 0.59f;
 const float E = 0.14f;
 
 // -------- CAMERA SETTINGS --------
-//#define SUNNY_16
-#define INDOOR
+#define SUNNY_16
+//#define INDOOR
 //#define EV1
 //#define EV_NEG4
 

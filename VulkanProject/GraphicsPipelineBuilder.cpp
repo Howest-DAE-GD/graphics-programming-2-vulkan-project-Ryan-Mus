@@ -80,8 +80,13 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::setRasterizationState(VkCullMo
 }
 
 GraphicsPipelineBuilder& GraphicsPipelineBuilder::setPushConstantRange(size_t size) {
-    m_PushConstantSize = size;
+	m_PushConstantSize = size;
     return *this;
+}
+
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setPushConstantFlags(VkShaderStageFlags stageFlags) {
+	m_PushConstantStageFlags = stageFlags;
+	return *this;
 }
 
 GraphicsPipeline* GraphicsPipelineBuilder::build() {
@@ -212,9 +217,11 @@ GraphicsPipeline* GraphicsPipelineBuilder::build() {
 
     // Push constants
     VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = static_cast<uint32_t>(m_PushConstantSize);
+    if (m_PushConstantSize > 0) {
+        pushConstantRange.stageFlags = m_PushConstantStageFlags;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = static_cast<uint32_t>(m_PushConstantSize);
+    }
 
     // Pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
