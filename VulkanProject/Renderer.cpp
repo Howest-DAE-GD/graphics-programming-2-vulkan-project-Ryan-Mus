@@ -2006,6 +2006,7 @@ void Renderer::cleanup()
 
     delete m_pGraphicsPipeline;
 	delete m_pDepthPipeline;
+	delete m_pShadowMapPipeline;
 	delete m_pFinalPipeline;
 	delete m_pToneMappingPipeline;
     delete m_pSyncObjects;
