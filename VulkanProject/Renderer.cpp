@@ -847,7 +847,7 @@ void Renderer::renderShadowMap()
     // 1. Compute light matrices (already present)
     auto [aabbMin, aabbMax] = m_pModel->getAABB();
     glm::vec3 sceneCenter = (aabbMin + aabbMax) * 0.5f;
-    glm::vec3 lightDirection = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::vec3 lightDirection = glm::normalize(glm::vec3(0.f, -1.0f, 0.f));
 
     std::vector<glm::vec3> corners = {
         {aabbMin.x, aabbMin.y, aabbMin.z},
@@ -884,14 +884,14 @@ void Renderer::renderShadowMap()
         maxLS = glm::max(maxLS, tr);
     }
 
-    float nearZ = 0.0f;
+    float nearZ = 0.001f;
     float farZ = maxLS.z - minLS.z;
     glm::mat4 lightProj = glm::ortho(
         minLS.x, maxLS.x,
         minLS.y, maxLS.y,
         nearZ, farZ
     );
-    lightProj[1][1] *= -1.0f;
+    lightProj[1][1] *= 1.0f;
 
     // Store the matrices in the Renderer class
     m_LightProj = lightProj;
@@ -977,18 +977,15 @@ void Renderer::renderShadowMap()
         );
 
         // Draw all submeshes
-        const auto& submeshes = m_pModel->getSubmeshes();
-        for (const auto& submesh : submeshes)
-        {
-            vkCmdDrawIndexed(
-                commandBuffer,
-                submesh.indexCount,
-                1,
-                submesh.indexStart,
-                0,
-                0
-            );
-        }
+        vkCmdDrawIndexed(
+            commandBuffer,
+            m_pModel->getIndexCount(),
+            1,
+            0,
+            0,
+            0
+        );
+      
 
         vkCmdEndRendering(commandBuffer);
 

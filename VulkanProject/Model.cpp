@@ -129,15 +129,6 @@ void Model::processNode(aiNode* node, const aiScene* scene, std::unordered_map<V
     aiMatrix4x4 nodeTransformation = node->mTransformation;
     glm::mat4 nodeTransform = glm::transpose(glm::make_mat4(&nodeTransformation.a1));
 
-    // Decompose the transformation matrix to extract scale
-    glm::vec3 scale, translation, skew;
-    glm::vec4 perspective;
-    glm::quat rotation;
-    glm::decompose(nodeTransform, scale, rotation, translation, skew, perspective);
-
-    // Combine the scale with the parent's scale
-    glm::vec3 combinedScale = glm::vec3(parentTransform[0][0], parentTransform[1][1], parentTransform[2][2]) * scale;
-
     // Compute the current transformation by combining with the parent
     glm::mat4 currentTransform = parentTransform * nodeTransform;
 
@@ -145,7 +136,7 @@ void Model::processNode(aiNode* node, const aiScene* scene, std::unordered_map<V
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
     {
         aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-        processMesh(mesh, scene, uniqueVertices, currentTransform, combinedScale);
+        processMesh(mesh, scene, uniqueVertices, currentTransform);
     }
 
     // Recursively process each of the children nodes
@@ -155,7 +146,7 @@ void Model::processNode(aiNode* node, const aiScene* scene, std::unordered_map<V
     }
 }
 
-void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 transform, glm::vec3 scale)
+void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 transform)
 {
     Submesh submesh{};
     glm::vec3 bboxMin(FLT_MAX);
@@ -168,7 +159,7 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
     {
         Vertex vertex{};
 
-        // Apply the transformation and scale to the vertex position
+        // Apply the transformation to the vertex position
         glm::vec4 pos(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
         pos = transform * pos;
         vertex.pos = glm::vec3(pos);
@@ -191,18 +182,27 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
 
         if (mesh->HasTangentsAndBitangents())
         {
-            glm::vec3 tangent = glm::vec3(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z);
-            glm::vec3 bitangent = glm::vec3(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z);
+            // Transform tangent
+            glm::vec4 tangent_h(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z, 0.0f);
+            tangent_h = transform * tangent_h;
+            vertex.tangent = glm::normalize(glm::vec3(tangent_h));
 
-            // Optional: ensure tangent is orthogonal to normal
-            tangent = glm::normalize(tangent - vertex.normal * glm::dot(vertex.normal, tangent));
+            // Transform bitangent (initial)
+            glm::vec4 bitangent_h(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z, 0.0f);
+            bitangent_h = transform * bitangent_h;
+            // vertex.bitangent will be recomputed from normal and tangent later.
 
-            // Optional: recompute bitangent to ensure consistency
-            bitangent = glm::normalize(glm::cross(vertex.normal, tangent));
-
-            vertex.tangent = tangent;
-            vertex.bitangent = bitangent;
+            // Re-orthogonalize tangent with respect to the transformed normal (vertex.normal)
+            if (mesh->HasNormals()) // Should be true if tangents are present
+            {
+                vertex.tangent = glm::normalize(vertex.tangent - vertex.normal * glm::dot(vertex.normal, vertex.tangent));
+                // Recompute bitangent to ensure consistency and correct handedness
+                vertex.bitangent = glm::normalize(glm::cross(vertex.normal, vertex.tangent));
+            }
+            // If somehow no normals but tangents exist, the above might need adjustment or indicates an issue.
+            // aiProcess_CalcTangentSpace usually ensures normals are present with tangents.
         }
+        // Ensure tangent/bitangent are initialized otherwise, if Vertex struct doesn't default them. Assuming it does.
 
         // Check if vertex is already in uniqueVertices
         if (uniqueVertices.count(vertex) == 0)
@@ -220,25 +220,50 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
         {
             uint32_t meshIndex = face.mIndices[j];
 
-            // Construct the vertex from the mesh data directly
+            // Construct the vertex from the mesh data directly, applying the same transformations as the first loop
             Vertex vertex{};
-            vertex.pos = glm::vec3(mesh->mVertices[meshIndex].x, mesh->mVertices[meshIndex].y, mesh->mVertices[meshIndex].z) * scale;
 
+            // Position
+            glm::vec4 pos_val(mesh->mVertices[meshIndex].x, mesh->mVertices[meshIndex].y, mesh->mVertices[meshIndex].z, 1.0f);
+            pos_val = transform * pos_val;
+            vertex.pos = glm::vec3(pos_val);
+
+            // Normal
             if (mesh->HasNormals())
             {
-                vertex.normal = glm::vec3(mesh->mNormals[meshIndex].x, mesh->mNormals[meshIndex].y, mesh->mNormals[meshIndex].z);
+                glm::vec4 normal_val(mesh->mNormals[meshIndex].x, mesh->mNormals[meshIndex].y, mesh->mNormals[meshIndex].z, 0.0f);
+                normal_val = transform * normal_val;
+                vertex.normal = glm::normalize(glm::vec3(normal_val));
             }
 
+            // TexCoord
             if (mesh->mTextureCoords[0])
             {
                 vertex.texCoord = glm::vec2(mesh->mTextureCoords[0][meshIndex].x, mesh->mTextureCoords[0][meshIndex].y);
             }
+            // Ensure texCoord is initialized otherwise
 
+            // Tangent and Bitangent
             if (mesh->HasTangentsAndBitangents())
             {
-                vertex.tangent = glm::vec3(mesh->mTangents[meshIndex].x, mesh->mTangents[meshIndex].y, mesh->mTangents[meshIndex].z);
-                vertex.bitangent = glm::vec3(mesh->mBitangents[meshIndex].x, mesh->mBitangents[meshIndex].y, mesh->mBitangents[meshIndex].z);
+                // Transform tangent
+                glm::vec4 tangent_h(mesh->mTangents[meshIndex].x, mesh->mTangents[meshIndex].y, mesh->mTangents[meshIndex].z, 0.0f);
+                tangent_h = transform * tangent_h;
+                vertex.tangent = glm::normalize(glm::vec3(tangent_h));
+                
+                // Transform bitangent (initial)
+                // glm::vec4 bitangent_h(mesh->mBitangents[meshIndex].x, mesh->mBitangents[meshIndex].y, mesh->mBitangents[meshIndex].z, 0.0f);
+                // bitangent_h = transform * bitangent_h;
+                // vertex.bitangent will be recomputed.
+
+                // Re-orthogonalize tangent and recompute bitangent using the transformed normal
+                if (mesh->HasNormals()) // vertex.normal should be correctly transformed by now
+                {
+                    vertex.tangent = glm::normalize(vertex.tangent - vertex.normal * glm::dot(vertex.normal, vertex.tangent));
+                    vertex.bitangent = glm::normalize(glm::cross(vertex.normal, vertex.tangent));
+                }
             }
+            // Ensure tangent/bitangent are initialized otherwise
 
             // Get or create the optimized index for this vertex
             uint32_t optimizedIndex;
@@ -264,7 +289,6 @@ void Model::processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<V
     // Update model AABB
     m_BoundingBoxMin = glm::min(m_BoundingBoxMin, bboxMin);
     m_BoundingBoxMax = glm::max(m_BoundingBoxMax, bboxMax);
-
 
     // Process material (existing code)
     if (mesh->mMaterialIndex >= 0)

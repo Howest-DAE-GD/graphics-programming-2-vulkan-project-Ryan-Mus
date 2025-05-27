@@ -91,8 +91,7 @@ public:
 
 private:
     void processNode(aiNode* node, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 parentTransform);
-    void processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 transform, glm::vec3 scale);
-
+    void processMesh(aiMesh* mesh, const aiScene* scene, std::unordered_map<Vertex, uint32_t>& uniqueVertices, glm::mat4 transform);
     VmaAllocator m_Allocator;
     Device* m_pDevice;
     PhysicalDevice* m_pPhysicalDevice;

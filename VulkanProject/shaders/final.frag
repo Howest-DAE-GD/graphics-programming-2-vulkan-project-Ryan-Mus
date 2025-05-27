@@ -41,7 +41,7 @@ const float PI = 3.14159265359;
 
 const vec3 sunDirection = normalize(vec3(0.0, -1.0, 0.0));
 const vec3 sunColor = vec3(1.0, 0.95, 0.8); // "Sunshine" color
-const float sunIntensity = 100000.0; // 100 lux
+const float sunIntensity = 100.0; // 100 lux
 
 // Debug visualization mode - switch between different tests
 #define DEBUG_MODE 0 // 0=normal render, 1=world pos, 2=debug view
@@ -176,14 +176,14 @@ void main() {
         vec4 lightSpacePosition = sunMatrices.lightProj * sunMatrices.lightView * vec4(worldPos, 1.0);
         lightSpacePosition /= lightSpacePosition.w;
         vec3 shadowMapUV = lightSpacePosition.xyz * 0.5 + 0.5;
-        shadowMapUV.y = 1.0 - shadowMapUV.y;
+        //shadowMapUV.y = 1.0 - shadowMapUV.y;
 
         // Manual shadow comparison
         ivec2 shadowMapSize = textureSize(shadowMapSampler, 0);
         ivec2 shadowTexel = ivec2(shadowMapUV.xy * shadowMapSize);
         float shadowMapDepth = texelFetch(shadowMapSampler, shadowTexel, 0).r;
         float lightDepth = shadowMapUV.z;
-        float bias = 0.005; // tweak as needed
+        float bias = 0.001; // Test with a smaller bias
 
         float shadowTerm = 1.0;
         if (shadowMapDepth + bias < lightDepth)
