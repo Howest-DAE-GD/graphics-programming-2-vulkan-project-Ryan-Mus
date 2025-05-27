@@ -27,8 +27,6 @@
 #include <string>
 #include <array>
 
-
-
 class Renderer 
 {
 public:
@@ -172,8 +170,6 @@ private:
     std::vector<GBuffer> m_GBuffers;
 	std::vector<Light> m_Lights;
 	std::vector<Buffer*> m_pLightBuffers;
-
-    
 
 	// HDR and LDR images
 	std::vector<Image*> m_pHDRImage;

@@ -128,9 +128,8 @@ void Renderer::initVulkan()
 
     createLightBuffer();
 
-	m_Lights.push_back(Light{ glm::vec3(0.0f, 1.f, -0.2f), glm::vec3(0.f, 1.0f, 0.f), 5.0f, 10.0f });
-    m_Lights.push_back(Light{ glm::vec3(-2.0f, 1.0f, -0.2f), glm::vec3(0.f, 0.f, 1.f), 5.0f, 10.0f });
-    m_Lights.push_back(Light{ glm::vec3(2.0f, 1.0f, -0.2f), glm::vec3(1.f, 0.f, 0.f), 5.0f, 10.0f });
+	m_Lights.push_back(Light{ glm::vec3(6.0f, 1.f, -0.2f), glm::vec3(1.f, 0.5f, 1.0f), 3.0f, 100.0f });
+
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -843,8 +842,6 @@ void Renderer::createIrradianceMap()
 
 void Renderer::renderShadowMap()
 {
-	// TODO update the lightview and proj and light direction to be members of the class
-    // 1. Compute light matrices (already present)
     auto [aabbMin, aabbMax] = m_pModel->getAABB();
     glm::vec3 sceneCenter = (aabbMin + aabbMax) * 0.5f;
     glm::vec3 lightDirection = glm::normalize(glm::vec3(0.f, -1.0f, 0.f));
@@ -1005,7 +1002,6 @@ void Renderer::renderShadowMap()
         m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
     }    
 }
-
 
 void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {

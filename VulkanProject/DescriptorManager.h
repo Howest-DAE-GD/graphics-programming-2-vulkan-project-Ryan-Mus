@@ -77,11 +77,11 @@ private:
 
     VkDescriptorSetLayout m_DescriptorSetLayout{};
     VkDescriptorSetLayout m_FinalPassDescriptorSetLayout{};
-    VkDescriptorSetLayout m_ComputeDescriptorSetLayout{}; // **Added**
+    VkDescriptorSetLayout m_ComputeDescriptorSetLayout{};
 
     VkDescriptorPool m_DescriptorPool{};
     std::vector<VkDescriptorSet> m_DescriptorSets{};
     std::vector<VkDescriptorSet> m_FinalPassDescriptorSets{};
-    std::vector<VkDescriptorSet> m_ComputeDescriptorSets{}; // **Added**
+    std::vector<VkDescriptorSet> m_ComputeDescriptorSets{};
 };
 

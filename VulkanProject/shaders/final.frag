@@ -242,7 +242,7 @@ void main() {
         kD *= 1.0 - metallic;
 
         vec3 diffuse = irradiance * albedo;
-        vec3 ambient = kD * diffuse * 3.0;
+        vec3 ambient = kD * diffuse * 1.0;
 
         finalColor = ambient + Lo;
     }
