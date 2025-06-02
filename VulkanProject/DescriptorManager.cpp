@@ -555,10 +555,9 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	shadowMapImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	shadowMapImageInfo.imageView = shadowMapImageView;
 	shadowMapImageInfo.sampler = sampler;
-	// Update the descriptor set with the new G-Buffer images
 
-
-    std::array<VkWriteDescriptorSet, 8> descriptorWrites{};
+    // Change from 8 to 9 descriptors
+    std::array<VkWriteDescriptorSet, 9> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -615,6 +614,13 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	descriptorWrites[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	descriptorWrites[7].descriptorCount = 1;
 	descriptorWrites[7].pImageInfo = &irradianceImageInfo;
+
+	descriptorWrites[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[8].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[8].dstBinding = 8;
+	descriptorWrites[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrites[8].descriptorCount = 1;
+	descriptorWrites[8].pImageInfo = &shadowMapImageInfo;
 
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }

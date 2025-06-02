@@ -1704,6 +1704,9 @@ void Renderer::recreateSwapChain()
 			m_LDRImageView[i]
 		);
     }
+
+    // Re-render the shadow map to match the new swapchain resolution
+    renderShadowMap();
 }
 
 void Renderer::transitionImageLayout(
