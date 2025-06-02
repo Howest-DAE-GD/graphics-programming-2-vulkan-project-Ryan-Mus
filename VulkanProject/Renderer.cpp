@@ -637,13 +637,21 @@ void Renderer::createSkyboxCubeMap()
     );
 
     // **4. Copy Data from Staging Buffer to HDRI Image**
-    pHDRIImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-    );
+    {
+        VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+        transitionImageLayout(
+            commandBuffer,
+            pHDRIImage,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            0,
+            VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+    }
 
     pHDRIImage->copyBufferToImage(
         m_pCommandPool,
@@ -652,13 +660,21 @@ void Renderer::createSkyboxCubeMap()
         static_cast<uint32_t>(texHeight)
     );
 
-    pHDRIImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    );
+    {
+        VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+        transitionImageLayout(
+            commandBuffer,
+            pHDRIImage,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+    }
 
     // **5. Create Image View for HDRI Image**
     VkImageView pHDRIImageView = pHDRIImage->createImageView(
@@ -712,13 +728,21 @@ void Renderer::createSkyboxCubeMap()
         }
     }
 
-	m_pSkyboxCubeMapImage->transitionImageLayout(
-		m_pCommandPool,
-		m_pDevice->getGraphicsQueue(),
-		VK_FORMAT_R32G32B32A32_SFLOAT,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-	);
+    {
+        VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+        transitionImageLayout(
+            commandBuffer,
+            m_pSkyboxCubeMapImage,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            0,
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+    }
 
     // **8. Render to Cube Map**
     renderToCubeMap(
@@ -756,13 +780,21 @@ void Renderer::createSkyboxCubeMap()
 	}
 
     // Transition Skybox Cube Map to SHADER_READ_ONLY_OPTIMAL
-    m_pSkyboxCubeMapImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_LAYOUT_UNDEFINED, // Assuming it's in UNDEFINED layout initially
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    );
+    {
+        VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+        transitionImageLayout(
+            commandBuffer,
+            m_pSkyboxCubeMapImage,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            0,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+    }
 }
 
 void Renderer::createIrradianceMap()
@@ -781,13 +813,21 @@ void Renderer::createIrradianceMap()
     );
 
     // Transition Irradiance Map to COLOR_ATTACHMENT_OPTIMAL for rendering
-    m_pIrradianceMapImage->transitionImageLayout(
-        m_pCommandPool,
-        m_pDevice->getGraphicsQueue(),
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    );
+    {
+        VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+        transitionImageLayout(
+            commandBuffer,
+            m_pIrradianceMapImage,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            0,
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+        m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+    }
 
 	for (int face = 0; face < 6; ++face)
 	{
@@ -903,7 +943,7 @@ void Renderer::renderShadowMap()
         // Transition shadow map image to depth attachment optimal
         transitionImageLayout(
             commandBuffer,
-            m_GBuffers[i].pShadowMapImage->getImage(),
+            m_GBuffers[i].pShadowMapImage,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
@@ -989,7 +1029,7 @@ void Renderer::renderShadowMap()
         // Transition shadow map image to shader read optimal for later use
         transitionImageLayout(
             commandBuffer,
-            m_GBuffers[i].pShadowMapImage->getImage(),
+            m_GBuffers[i].pShadowMapImage,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
             VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
@@ -1019,7 +1059,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // Transition depth image to DEPTH_STENCIL_ATTACHMENT_OPTIMAL for depth pre-pass
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pDepthImage->getImage(),
+        currentGBuffer.pDepthImage,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
@@ -1123,7 +1163,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
            // Ensure depth data is available for the main pass
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pDepthImage->getImage(),
+        currentGBuffer.pDepthImage,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
@@ -1136,7 +1176,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // Transition G-buffer images for the current frame
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pDiffuseImage->getImage(),
+        currentGBuffer.pDiffuseImage,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
@@ -1148,7 +1188,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pNormalImage->getImage(),
+        currentGBuffer.pNormalImage,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
@@ -1160,7 +1200,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pMetallicRougnessImage->getImage(),
+        currentGBuffer.pMetallicRougnessImage,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
@@ -1277,7 +1317,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // Transition G-buffer images to SHADER_READ_ONLY_OPTIMAL for final pass
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pDiffuseImage->getImage(),
+        currentGBuffer.pDiffuseImage,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         targetColorLayout,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1289,7 +1329,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pNormalImage->getImage(),
+        currentGBuffer.pNormalImage,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         targetColorLayout,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1301,7 +1341,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
 
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pMetallicRougnessImage->getImage(),
+        currentGBuffer.pMetallicRougnessImage,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         targetColorLayout,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1314,7 +1354,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     // Transition depth image to DEPTH_STENCIL_READ_ONLY_OPTIMAL for final pass
     transitionImageLayout(
         commandBuffer,
-        currentGBuffer.pDepthImage->getImage(),
+        currentGBuffer.pDepthImage,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         targetDepthLayout,
         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
@@ -1763,11 +1803,21 @@ void Renderer::createGBuffer()
         m_GBuffers[i].diffuseImageView = m_GBuffers[i].pDiffuseImage->createImageView(
             VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
-        m_GBuffers[i].pDiffuseImage->transitionImageLayout(m_pCommandPool,
-            m_pDevice->getGraphicsQueue(),
-            VK_FORMAT_R8G8B8A8_SRGB,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_GBuffers[i].pDiffuseImage,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                0,
+                VK_ACCESS_2_SHADER_READ_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
           
         // Create normal image
         m_GBuffers[i].pNormalImage = new Image(m_pDevice, m_VmaAllocator);
@@ -1780,11 +1830,21 @@ void Renderer::createGBuffer()
         m_GBuffers[i].normalImageView = m_GBuffers[i].pNormalImage->createImageView(
             VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
-		m_GBuffers[i].pNormalImage->transitionImageLayout(m_pCommandPool,
-			m_pDevice->getGraphicsQueue(),
-			VK_FORMAT_R8G8B8A8_UNORM,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_GBuffers[i].pNormalImage,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                0,
+                VK_ACCESS_2_SHADER_READ_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
 
         // Create metallic-roughness image
         m_GBuffers[i].pMetallicRougnessImage = new Image(m_pDevice, m_VmaAllocator);
@@ -1797,11 +1857,21 @@ void Renderer::createGBuffer()
         m_GBuffers[i].metallicRoughnessImageView = m_GBuffers[i].pMetallicRougnessImage->createImageView(
             VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
-		m_GBuffers[i].pMetallicRougnessImage->transitionImageLayout(m_pCommandPool,
-			m_pDevice->getGraphicsQueue(),
-			VK_FORMAT_R8G8B8A8_UNORM,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_GBuffers[i].pMetallicRougnessImage,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                0,
+                VK_ACCESS_2_SHADER_READ_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
 
         // Create depth image
         VkFormat depthFormat = findDepthFormat();
@@ -1815,11 +1885,21 @@ void Renderer::createGBuffer()
         m_GBuffers[i].depthImageView = m_GBuffers[i].pDepthImage->createImageView(
             depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-        m_GBuffers[i].pDepthImage->transitionImageLayout(m_pCommandPool,
-            m_pDevice->getGraphicsQueue(),
-            depthFormat,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_GBuffers[i].pDepthImage,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                0,
+                VK_ACCESS_2_SHADER_READ_BIT,
+                VK_IMAGE_ASPECT_DEPTH_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
 
 		// Create Shadow map image
 		m_GBuffers[i].pShadowMapImage = new Image(m_pDevice, m_VmaAllocator);
@@ -1832,11 +1912,21 @@ void Renderer::createGBuffer()
 		m_GBuffers[i].shadowMapImageView = m_GBuffers[i].pShadowMapImage->createImageView(
 			depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-		m_GBuffers[i].pShadowMapImage->transitionImageLayout(m_pCommandPool,
-			m_pDevice->getGraphicsQueue(),
-			depthFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_GBuffers[i].pShadowMapImage,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                0,
+                VK_ACCESS_2_SHADER_READ_BIT,
+                VK_IMAGE_ASPECT_DEPTH_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
     }
 }
 
@@ -1857,12 +1947,21 @@ void Renderer::createHDRImage()
             VMA_MEMORY_USAGE_GPU_ONLY);
         m_HDRImageView[i] = m_pHDRImage[i]->createImageView(
             VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
-        m_pHDRImage[i]->transitionImageLayout(
-            m_pCommandPool,
-            m_pDevice->getGraphicsQueue(),
-            VK_FORMAT_R32G32B32A32_SFLOAT,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_GENERAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_pHDRImage[i],
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                0,
+                VK_ACCESS_2_SHADER_WRITE_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
     }
 }
 
@@ -1883,12 +1982,21 @@ void Renderer::createLDRImage()
 			VMA_MEMORY_USAGE_GPU_ONLY);
 		m_LDRImageView[i] = m_pLDRImage[i]->createImageView(
 			VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-		m_pLDRImage[i]->transitionImageLayout(
-			m_pCommandPool,
-			m_pDevice->getGraphicsQueue(),
-			VK_FORMAT_R8G8B8A8_UNORM,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        {
+            VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
+            transitionImageLayout(
+                commandBuffer,
+                m_pLDRImage[i],
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                0,
+                VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT
+            );
+            m_pCommandPool->endSingleTimeCommands(commandBuffer, m_pDevice->getGraphicsQueue());
+        }
 	}
 }
 
