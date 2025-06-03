@@ -20,7 +20,8 @@
 #include "Frustum.h"
 
 Renderer::Renderer(Window* window)
-    : m_pWindow(window) 
+    : m_pWindow(window),
+      m_pCamera(nullptr)  // Initialize to nullptr
 {
     spdlog::debug("Renderer created.");
 }
@@ -35,6 +36,15 @@ void Renderer::initialize()
 {
     spdlog::debug("Initializing Renderer.");
     initVulkan();
+    
+    // Initialize the camera after Vulkan initialization
+    m_pCamera = new Camera(
+        m_pWindow->getGLFWwindow(),
+        glm::vec3(0.0f, 0.0f, 0.3f),  // Camera position
+        glm::vec3(0.0f, 1.0f, 0.0f),  // World up vector (Y-up)
+        0.0f, 0.0f                    // Initial yaw and pitch
+    );
+    
     spdlog::debug("Renderer initialized.");
 }
 
@@ -130,10 +140,12 @@ void Renderer::initVulkan()
 
 	m_Lights.push_back(Light{ glm::vec3(6.0f, 1.f, -0.2f), glm::vec3(1.f, 0.5f, 1.0f), 3.0f, 100.0f });
 
+    createSunMatricesBuffers();
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
 		updateLightBuffer(i);
+        updateSunMatricesBuffer(i);
     }
 
     m_pModel = new Model(m_VmaAllocator, m_pDevice, m_pPhysicalDevice, m_pCommandPool, MODEL_PATH_);
@@ -186,6 +198,8 @@ void Renderer::initVulkan()
             sizeof(UniformBufferObject),
 			m_pLightBuffers[frameIndex]->get(),
 			sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t),
+			m_pSunMatricesBuffers[frameIndex]->get(),
+			sizeof(SunMatricesUBO),
 			m_GBuffers[frameIndex].shadowMapImageView, // Shadow map image view
 			m_SkyboxCubeMapImageView, // Skybox cube map image view
 			m_IrradianceMapImageView, // Irradiance map image view
@@ -268,7 +282,7 @@ void Renderer::initVulkan()
         .setAttachmentCount(1)
         .enableDepthTest(false)
         .setRasterizationState(VK_CULL_MODE_NONE)
-        .setPushConstantRange(sizeof(glm::mat4) * 2)
+        .setPushConstantRange(sizeof(DebugPushConstants))
 		.setPushConstantFlags(VK_SHADER_STAGE_FRAGMENT_BIT)
         .build();
 
@@ -581,6 +595,23 @@ void Renderer::createLightBuffer()
             m_VmaAllocator,
             bufferSize,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VMA_MEMORY_USAGE_CPU_TO_GPU,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+            VMA_ALLOCATION_CREATE_MAPPED_BIT
+        );
+    }
+}
+
+void Renderer::createSunMatricesBuffers()
+{
+    VkDeviceSize bufferSize = sizeof(SunMatricesUBO);
+    m_pSunMatricesBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        m_pSunMatricesBuffers[i] = new Buffer(
+            m_VmaAllocator,
+            bufferSize,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VMA_MEMORY_USAGE_CPU_TO_GPU,
             VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
             VMA_ALLOCATION_CREATE_MAPPED_BIT
@@ -1413,23 +1444,18 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
             0,
             nullptr
         );
-
-        // Push constants for lightProj and lightView matrices
-        struct SunMatrices {
-            glm::mat4 lightProj;
-            glm::mat4 lightView;
-        } sunMatrices;
-
-        sunMatrices.lightProj = m_LightProj;
-        sunMatrices.lightView = m_LightView;
+        // Update debug push constants with camera's debug settings and intensity values
+        m_DebugPushConstants.debugMode = m_pCamera->getDebugMode();
+        m_DebugPushConstants.iblIntensity = m_pCamera->getIblIntensity();
+        m_DebugPushConstants.sunIntensity = m_pCamera->getSunIntensity();
 
         vkCmdPushConstants(
             commandBuffer,
             m_pFinalPipeline->getPipelineLayout(),
-            VK_SHADER_STAGE_FRAGMENT_BIT, // Make sure it matches the shader stage where it's used
+            VK_SHADER_STAGE_FRAGMENT_BIT,
             0,
-            sizeof(SunMatrices),
-            &sunMatrices
+            sizeof(DebugPushConstants),
+            &m_DebugPushConstants
         );
 
         // Set viewport and scissor
@@ -1526,6 +1552,7 @@ void Renderer::drawFrame()
     recordCommandBuffer(m_CommandBuffers[m_currentFrame], imageIndex);
 
     updateUniformBuffer(m_currentFrame);
+    updateSunMatricesBuffer(m_currentFrame);
 
     // Prepare VkCommandBufferSubmitInfo
     VkCommandBufferSubmitInfo commandBufferInfo{};
@@ -1605,16 +1632,11 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
     lastTime = currentTime;
 
-    // Create or update the camera
-    static Camera camera(m_pWindow->getGLFWwindow(),
-        glm::vec3(0.0f, 0.0f, 0.3f), // Camera position
-        glm::vec3(0.0f, 1.0f, 0.0f), // World up vector (Y-up)
-        0.0f, 0.0f);               // Initial yaw and pitch
-
-    camera.update(deltaTime);
+    // Update the camera (now using member variable)
+    m_pCamera->update(deltaTime);
 
     m_UniformBufferObject.model = glm::mat4(1.0f);
-    m_UniformBufferObject.view = camera.getViewMatrix();
+    m_UniformBufferObject.view = m_pCamera->getViewMatrix();
     m_UniformBufferObject.proj = glm::perspective(
         glm::radians(45.0f),
         m_pSwapChain->getExtent().width / (float)m_pSwapChain->getExtent().height,
@@ -1623,9 +1645,8 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     m_UniformBufferObject.proj[1][1] *= -1;
 
     // Set the camera position
-    m_UniformBufferObject.cameraPosition = camera.getPosition();
-
-	m_UniformBufferObject.viewportSize = glm::vec2(m_pSwapChain->getExtent().width, m_pSwapChain->getExtent().height);
+    m_UniformBufferObject.cameraPosition = m_pCamera->getPosition();
+    m_UniformBufferObject.viewportSize = glm::vec2(m_pSwapChain->getExtent().width, m_pSwapChain->getExtent().height);
 
     // Map the uniform buffer and copy the data
     void* data = m_pUniformBuffers[currentImage]->map();
@@ -1645,6 +1666,16 @@ void Renderer::updateLightBuffer(uint32_t currentImage)
     void* data = m_pLightBuffers[currentImage]->map();
     memcpy(data, &lightsBufferData, sizeof(lightsBufferData));
     m_pLightBuffers[currentImage]->unmap();
+}
+
+void Renderer::updateSunMatricesBuffer(uint32_t currentImage)
+{
+    SunMatricesUBO sunMatrices;
+    sunMatrices.lightProj = m_LightProj;
+    sunMatrices.lightView = m_LightView;
+    void* data = m_pSunMatricesBuffers[currentImage]->map();
+    memcpy(data, &sunMatrices, sizeof(sunMatrices));
+    m_pSunMatricesBuffers[currentImage]->unmap();
 }
 
 void Renderer::recreateSwapChain()
@@ -1693,6 +1724,8 @@ void Renderer::recreateSwapChain()
             sizeof(UniformBufferObject),
             m_pLightBuffers[i]->get(),
             (sizeof(Light) * MAX_LIGHT_COUNT + sizeof(uint32_t)),
+			m_pSunMatricesBuffers[i]->get(),
+			sizeof(SunMatricesUBO),
 			m_GBuffers[i].shadowMapImageView,
 			m_SkyboxCubeMapImageView,
             m_IrradianceMapImageView,
@@ -2112,6 +2145,9 @@ void Renderer::cleanup()
 {
     cleanupSwapChain();
 
+    // Clean up the camera
+    delete m_pCamera;
+    m_pCamera = nullptr;
 
     for (auto& uniformBuffer : m_pUniformBuffers) 
     {
@@ -2121,6 +2157,10 @@ void Renderer::cleanup()
     {
 		delete lightBuffer;
 	}
+    for (auto& sunMatricesBuffer : m_pSunMatricesBuffers) 
+    {
+        delete sunMatricesBuffer;
+    }
 
     vkDestroyImageView(m_pDevice->get(), m_IrradianceMapImageView, nullptr);
     delete m_pIrradianceMapImage;

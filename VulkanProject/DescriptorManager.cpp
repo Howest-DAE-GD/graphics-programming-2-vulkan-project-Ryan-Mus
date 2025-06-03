@@ -104,17 +104,14 @@ void DescriptorManager::createDescriptorPool()
           { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             static_cast<uint32_t>(m_MaxFramesInFlight * (m_MaterialCount * 3 + 4)) },
 
-            // Total storage buffers (e.g., light buffer)
+            // Total storage buffers (ubo, light buffer, sun matrix)
             { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-              static_cast<uint32_t>(m_MaxFramesInFlight) },
+              static_cast<uint32_t>(3) },
 
               // Total storage images (compute descriptors)
               { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                 static_cast<uint32_t>(m_MaxFramesInFlight * 2) }, // Input and output images per frame
 
-                //// Total samplers (compute descriptors)
-                //{ VK_DESCRIPTOR_TYPE_SAMPLER,
-                //  static_cast<uint32_t>(m_MaxFramesInFlight) }
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -321,7 +318,15 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
 	shadowMapBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	shadowMapBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 9> bindings = { 
+	//Binding for sun matrix buffer (binding = 9)
+	VkDescriptorSetLayoutBinding sunMatrixBufferBinding{};
+	sunMatrixBufferBinding.binding = 9;
+	sunMatrixBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	sunMatrixBufferBinding.descriptorCount = 1;
+	sunMatrixBufferBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	sunMatrixBufferBinding.pImmutableSamplers = nullptr;
+
+    std::array<VkDescriptorSetLayoutBinding, 10> bindings = { 
         diffuseBinding,
         normalBinding,
         metallicRoughnessBinding,
@@ -330,7 +335,8 @@ void DescriptorManager::createFinalPassDescriptorSetLayout()
         lightBufferBinding,
         skyboxBinding,
 		irradianceBinding,
-		shadowMapBinding
+		shadowMapBinding,
+		sunMatrixBufferBinding
     };
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
@@ -359,6 +365,8 @@ void DescriptorManager::createFinalPassDescriptorSet(
     size_t uniformBufferObjectSize,
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
+    VkBuffer sunMatrixBuffer,
+    size_t sunMatrixBufferObjectSize,
 	VkImageView shadowMapImageView,
 	VkImageView skyboxImageView,
 	VkImageView irradianceImageView,
@@ -422,7 +430,12 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	shadowMapImageInfo.imageView = shadowMapImageView;
 	shadowMapImageInfo.sampler = sampler;
 
-    std::array<VkWriteDescriptorSet, 9> descriptorWrites{};
+	VkDescriptorBufferInfo sunMatrixBufferInfo{};
+	sunMatrixBufferInfo.buffer = sunMatrixBuffer;
+	sunMatrixBufferInfo.offset = 0;
+	sunMatrixBufferInfo.range = sunMatrixBufferObjectSize;
+
+    std::array<VkWriteDescriptorSet, 10> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -487,6 +500,13 @@ void DescriptorManager::createFinalPassDescriptorSet(
 	descriptorWrites[8].descriptorCount = 1;
 	descriptorWrites[8].pImageInfo = &shadowMapImageInfo;
 
+	descriptorWrites[9].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[9].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[9].dstBinding = 9;
+	descriptorWrites[9].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorWrites[9].descriptorCount = 1;
+	descriptorWrites[9].pBufferInfo = &sunMatrixBufferInfo;
+
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
@@ -505,6 +525,8 @@ void DescriptorManager::updateFinalPassDescriptorSet(
     size_t uniformBufferObjectSize,
     VkBuffer lightBuffer,
     size_t lightBufferObjectSize,
+    VkBuffer sunMatrixBuffer,
+    size_t sunMatrixBufferObjectSize,
 	VkImageView shadowMapImageView,
 	VkImageView skyboxImageView,
 	VkImageView irradianceImageView,
@@ -556,8 +578,12 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	shadowMapImageInfo.imageView = shadowMapImageView;
 	shadowMapImageInfo.sampler = sampler;
 
-    // Change from 8 to 9 descriptors
-    std::array<VkWriteDescriptorSet, 9> descriptorWrites{};
+	VkDescriptorBufferInfo sunMatrixBufferInfo{};
+	sunMatrixBufferInfo.buffer = sunMatrixBuffer;
+	sunMatrixBufferInfo.offset = 0;
+	sunMatrixBufferInfo.range = sunMatrixBufferObjectSize;
+
+    std::array<VkWriteDescriptorSet, 10> descriptorWrites{};
 
     descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrites[0].dstSet = m_FinalPassDescriptorSets[frameIndex];
@@ -621,6 +647,13 @@ void DescriptorManager::updateFinalPassDescriptorSet(
 	descriptorWrites[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	descriptorWrites[8].descriptorCount = 1;
 	descriptorWrites[8].pImageInfo = &shadowMapImageInfo;
+
+	descriptorWrites[9].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[9].dstSet = m_FinalPassDescriptorSets[frameIndex];
+	descriptorWrites[9].dstBinding = 9;
+	descriptorWrites[9].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorWrites[9].descriptorCount = 1;
+	descriptorWrites[9].pBufferInfo = &sunMatrixBufferInfo;
 
     vkUpdateDescriptorSets(m_Device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }

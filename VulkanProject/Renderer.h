@@ -57,7 +57,8 @@ private:
     void recreateSwapChain();
     void cleanupSwapChain();
 	void blitLDRToSwapchain(uint32_t imageIndex, VkCommandBuffer commandBuffer);
-
+	void createSunMatricesBuffers();
+	void updateSunMatricesBuffer(uint32_t currentImage);
     // Helper functions
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
@@ -133,10 +134,24 @@ private:
         alignas(4) float radius;
 	};
 
+    struct SunMatricesUBO
+    {
+        alignas(16) glm::mat4 lightProj;
+        alignas(16) glm::mat4 lightView;
+    };
+
+    struct DebugPushConstants {
+        int debugMode;
+        float iblIntensity;
+        float sunIntensity;
+        float padding;  // Ensure proper alignment
+    };
+
     glm::mat4 m_LightProj;
     glm::mat4 m_LightView;
 
     Window* m_pWindow;
+    Camera* m_pCamera;  // New camera member variable
 
     // Vulkan components
     Instance* m_pInstance;
@@ -186,6 +201,10 @@ private:
 	Image* m_pIrradianceMapImage;
 	std::array<VkImageView, 6> m_IrradianceMapImageViews;
 	VkImageView m_IrradianceMapImageView;
+
+    std::vector<Buffer*> m_pSunMatricesBuffers;
+
+    DebugPushConstants m_DebugPushConstants;
 
     // Paths
     const std::string MODEL_PATH_ = "models/glTF/Sponza.gltf";
