@@ -1907,8 +1907,9 @@ void Renderer::createGBuffer()
 
 		// Create Shadow map image
 		m_GBuffers[i].pShadowMapImage = new Image(m_pDevice, m_VmaAllocator);
-		m_GBuffers[i].pShadowMapImage->createImage(4096,
-			4096,
+		m_GBuffers[i].pShadowMapImage->createImage(
+            2048,
+			2048,
             depthFormat,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,

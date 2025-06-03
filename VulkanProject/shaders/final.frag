@@ -173,24 +173,32 @@ void main() {
         vec3 L = normalize(-sunDirection);
         float NdotL = max(dot(N, L), 0.0);
 
-        if (NdotL > 0.0) 
+         if (NdotL > 0.0) 
         {
             vec4 lightSpacePosition = sunMatrices.lightProj * sunMatrices.lightView * vec4(worldPos, 1.0);
             lightSpacePosition /= lightSpacePosition.w;
             vec3 shadowMapUV = lightSpacePosition.xyz * 0.5 + 0.5;
             shadowMapUV.z = lightSpacePosition.z; // Use z for depth comparison
-            //shadowMapUV.y = 1.0 - shadowMapUV.y;
 
-            // Manual shadow comparison
             ivec2 shadowMapSize = textureSize(shadowMapSampler, 0);
-            ivec2 shadowTexel = ivec2(shadowMapUV.xy * shadowMapSize);
-            float shadowMapDepth = texelFetch(shadowMapSampler, shadowTexel, 0).r;
-            float lightDepth = shadowMapUV.z;
             float bias = max(0.005 * (1.0 - dot(N, L)), 0.001);
 
-            float shadowTerm = 1.0;
-            if (lightDepth > shadowMapDepth + bias)
-                shadowTerm = 0.0;
+            // --- PCF filtering ---
+            float shadowTerm = 0.0;
+            int kernelSize = 1; // 3x3 kernel
+            int samples = 0;
+            for (int x = -kernelSize; x <= kernelSize; ++x) {
+                for (int y = -kernelSize; y <= kernelSize; ++y) {
+                    vec2 offset = vec2(x, y) / vec2(shadowMapSize);
+                    vec2 sampleUV = shadowMapUV.xy + offset;
+                    float sampleDepth = texture(shadowMapSampler, sampleUV).r;
+                    if (shadowMapUV.z <= sampleDepth + bias)
+                        shadowTerm += 1.0;
+                    samples++;
+                }
+            }
+            shadowTerm /= float(samples);
+            // --- End PCF filtering ---
 
             vec3 H = normalize(V + L);
 
@@ -209,7 +217,7 @@ void main() {
             vec3 radiance = sunColor * sunIntensity;
 
             Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadowTerm;
-        } 
+        }
         // Point lights
         for (uint i = 0; i < lightCount; i++) {
             Light light = lights[i];
