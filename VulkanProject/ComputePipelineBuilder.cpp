@@ -23,6 +23,12 @@ ComputePipelineBuilder& ComputePipelineBuilder::setName(const std::string& name)
 	return *this;
 }
 
+ComputePipelineBuilder& ComputePipelineBuilder::setPushConstantRange(size_t s)
+{
+	m_PushConstantSize = s;
+	return *this;
+}
+
 ComputePipeline* ComputePipelineBuilder::build() 
 {
 	// Load the compute shader
@@ -36,12 +42,19 @@ ComputePipeline* ComputePipelineBuilder::build()
 	shaderStageInfo.module = computeShaderModule;
 	shaderStageInfo.pName = "main"; // Entry point in the shader
 
+	//push constant range
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; // Stage this push constant is used in
+	pushConstantRange.offset = 0; // Offset in bytes from the start of the push constant block
+	pushConstantRange.size = m_PushConstantSize; // Size of the push constant block in bytes
 
 	// Create the pipeline layout
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = 1;
 	pipelineLayoutInfo.pSetLayouts = &m_PipelineLayout;
+	pipelineLayoutInfo.pushConstantRangeCount = 1; // Number of push constant ranges
+	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange; // Pointer to the push constant ranges
 	VkPipelineLayout pipelineLayout;
 
 	if (vkCreatePipelineLayout(m_pDevice->get(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) 

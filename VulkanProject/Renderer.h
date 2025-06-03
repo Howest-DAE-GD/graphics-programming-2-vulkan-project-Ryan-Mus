@@ -59,6 +59,8 @@ private:
 	void blitLDRToSwapchain(uint32_t imageIndex, VkCommandBuffer commandBuffer);
 	void createSunMatricesBuffers();
 	void updateSunMatricesBuffer(uint32_t currentImage);
+    void updateLights();
+
     // Helper functions
     VkFormat findDepthFormat();
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
@@ -145,6 +147,14 @@ private:
         float iblIntensity;
         float sunIntensity;
         float padding;  // Ensure proper alignment
+    };
+
+    // Add a new push constant struct for tone mapping
+    struct ToneMappingPushConstants {
+        float aperture;
+        float ISO;
+        float shutterSpeed;
+        float padding;  // For alignment
     };
 
     glm::mat4 m_LightProj;

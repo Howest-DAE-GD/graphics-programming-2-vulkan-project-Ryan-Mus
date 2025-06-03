@@ -12,35 +12,12 @@ const float C = 2.43f;
 const float D = 0.59f;
 const float E = 0.14f;
 
-// -------- CAMERA SETTINGS --------
-//#define SUNNY_16
-#define INDOOR
-//#define EV1
-//#define EV_NEG4
-
-#ifdef SUNNY_16
-    const float aperture     = 5.0f;
-    const float ISO          = 100.0f;
-    const float shutterSpeed = 1.0f / 200.0f;
-#endif
-
-#ifdef INDOOR
-    const float aperture     = 1.4f;
-    const float ISO          = 1600.0f;
-    const float shutterSpeed = 1.0f / 60.0f;
-#endif
-
-#ifdef EV1
-    const float aperture     = 1.0f;
-    const float ISO          = 100.0f;
-    const float shutterSpeed = 1.0f / 2.0f;
-#endif
-
-#ifdef EV_NEG4
-    const float aperture     = 1.0f;
-    const float ISO          = 100.0f;
-    const float shutterSpeed = 1.0f / (2.0f / pow(2.0f, -4.0f));  // ? 16 sec
-#endif
+// Push constants for camera exposure settings
+layout(push_constant) uniform ExposureSettings {
+    float aperture;
+    float ISO;
+    float shutterSpeed;
+} exposure;
 
 // -------- Exposure Utilities --------
 float CalculateEV100FromPhysicalCamera(in float aperture, in float shutterTime, in float ISO)
@@ -71,10 +48,10 @@ void main()
 
     vec4 inputColor = imageLoad(inputImage, texelCoord);
 
-    float EV100     = CalculateEV100FromPhysicalCamera(aperture, shutterSpeed, ISO);
-    float exposure  = ConvertEV100ToExposure(EV100);
+    float EV100     = CalculateEV100FromPhysicalCamera(exposure.aperture, exposure.shutterSpeed, exposure.ISO);
+    float exposureValue = ConvertEV100ToExposure(EV100);
 
-    vec3 exposedColor = inputColor.rgb * exposure;
+    vec3 exposedColor = inputColor.rgb * exposureValue;
     vec3 mappedColor = ACESFilm(exposedColor);
 
     imageStore(outputImage, texelCoord, vec4(mappedColor, inputColor.a));

@@ -290,6 +290,7 @@ void Renderer::initVulkan()
 		.setDevice(m_pDevice)
 		.setShaderPath("shaders/tone_mapping.comp.spv")
 		.setDescriptorSetLayout(m_pDescriptorManager->getComputeDescriptorSetLayout())
+		.setPushConstantRange(sizeof(ToneMappingPushConstants))
 		.build();
 
     m_pSyncObjects = new SynchronizationObjects(m_pDevice->get(), MAX_FRAMES_IN_FLIGHT);
@@ -1509,6 +1510,23 @@ void Renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         nullptr
     );
 
+    // Set up push constants with camera exposure settings
+    ToneMappingPushConstants toneMappingConstants{};
+    Camera::ExposureSettings exposureSettings = m_pCamera->getExposureSettings();
+    toneMappingConstants.aperture = exposureSettings.aperture;
+    toneMappingConstants.ISO = exposureSettings.ISO;
+    toneMappingConstants.shutterSpeed = exposureSettings.shutterSpeed;
+
+    // Push the constants to the tone mapping shader
+    vkCmdPushConstants(
+        commandBuffer,
+        m_pToneMappingPipeline->getPipelineLayout(),
+        VK_SHADER_STAGE_COMPUTE_BIT,
+        0,
+        sizeof(ToneMappingPushConstants),
+        &toneMappingConstants
+    );
+
     // Dispatch the compute shader
     uint32_t workgroupSizeX = 16;
     uint32_t workgroupSizeY = 16;
@@ -1552,6 +1570,8 @@ void Renderer::drawFrame()
     recordCommandBuffer(m_CommandBuffers[m_currentFrame], imageIndex);
 
     updateUniformBuffer(m_currentFrame);
+    updateLights();
+    updateLightBuffer(m_currentFrame);
     updateSunMatricesBuffer(m_currentFrame);
 
     // Prepare VkCommandBufferSubmitInfo
@@ -1651,6 +1671,26 @@ void Renderer::updateUniformBuffer(uint32_t currentImage)
     // Map the uniform buffer and copy the data
     void* data = m_pUniformBuffers[currentImage]->map();
     memcpy(data, &m_UniformBufferObject, sizeof(m_UniformBufferObject));
+}
+
+void Renderer::updateLights() {
+    static float time = 0.0f;
+    time += 0.01f; // Adjust speed as needed
+    
+    // Make sure we have 3 lights
+    if (m_Lights.size() < 1) {
+        m_Lights.resize(1);
+    }
+    
+    // Fixed Y and Z positions for all lights
+    const float y = 1.0f;
+    const float z = -0.2f;
+
+    // Blue light - pulsating intensity
+	m_Lights[0].color = glm::vec3(1.f, 0.694f, 0.431f); // 4000K light color
+    m_Lights[0].position = glm::vec3(7.0f * sin(time ), y, z);
+    m_Lights[0].intensity = 5.0f + 10.0f * (sin(5*time) * 0.5f + 0.5f); // Pulsate between 5 and 15
+    m_Lights[0].radius = 5.0f;
 }
 
 void Renderer::updateLightBuffer(uint32_t currentImage)

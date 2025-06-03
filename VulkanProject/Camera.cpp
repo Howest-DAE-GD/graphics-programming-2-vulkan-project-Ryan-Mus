@@ -6,7 +6,7 @@ Camera::Camera(GLFWwindow* window, glm::vec3 position, glm::vec3 up, float yaw, 
       m_FirstMouse(true), m_MovementSpeed(2.5f), m_MouseSensitivity(0.1f),
       m_DebugMode(0), m_F10Pressed(false), m_F2Pressed(false), m_F1Pressed(false),
       m_IPressedLast(false), m_KPressedLast(false), m_OPressedLast(false), m_LPressedLast(false),
-      m_IblIntensity(1.0f), m_SunIntensity(100.0f)
+      m_UPressedLast(false), m_JPressedLast(false), m_IblIntensity(1.0f), m_SunIntensity(100.0f)
 {
     m_Front = glm::vec3(0.0f, 0.0f, 1.0f);
     update(0.0f);
@@ -145,6 +145,23 @@ void Camera::processKeyboard(float deltaTime)
     } else {
         m_LPressedLast = false;
     }
+
+    // Handle ISO adjustment (U increases, J decreases by one stop)
+    bool uPressed = glfwGetKey(m_Window, GLFW_KEY_U) == GLFW_PRESS;
+    bool jPressed = glfwGetKey(m_Window, GLFW_KEY_J) == GLFW_PRESS;
+    
+    if (uPressed && !m_UPressedLast) {
+        m_ExposureSettings.ISO *= 2.0f; // Double ISO (one stop up)
+		spdlog::info("ISO increased to: {}", m_ExposureSettings.ISO);
+    }
+    
+    if (jPressed && !m_JPressedLast) {
+        m_ExposureSettings.ISO /= 2.0f; // Halve ISO (one stop down)
+		spdlog::info("ISO decreased to: {}", m_ExposureSettings.ISO);
+    }
+    
+    m_UPressedLast = uPressed;
+    m_JPressedLast = jPressed;
 }
 
 

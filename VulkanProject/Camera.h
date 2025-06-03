@@ -17,6 +17,16 @@ public:
     float getIblIntensity() const { return m_IblIntensity; }
     float getSunIntensity() const { return m_SunIntensity; }
 
+    // Exposure settings struct
+    struct ExposureSettings {
+        float aperture;
+        float ISO;
+        float shutterSpeed;
+    };
+    
+    // Getter for exposure settings
+    ExposureSettings getExposureSettings() const { return m_ExposureSettings; }
+
 private:
     void processKeyboard(float deltaTime);
     void processMouse();
@@ -55,4 +65,15 @@ private:
     bool m_KPressedLast = false;
     bool m_OPressedLast = false;
     bool m_LPressedLast = false;
+
+    // Camera exposure settings (default to INDOOR values)
+    ExposureSettings m_ExposureSettings = {
+        1.4f,   // aperture
+        1600.0f, // ISO
+        1.0f / 60.0f // shutterSpeed
+    };
+    
+    // Key tracking for exposure controls
+    bool m_UPressedLast = false;
+    bool m_JPressedLast = false;
 };
