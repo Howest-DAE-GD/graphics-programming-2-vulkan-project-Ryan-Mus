@@ -39,7 +39,7 @@ layout(push_constant) uniform SunMatrices {
 
 const float PI = 3.14159265359;
 
-const vec3 sunDirection = normalize(vec3(0.0, -1.0, 0.0));
+const vec3 sunDirection = normalize(vec3(-0.2, -1.0, -0.4));
 const vec3 sunColor = vec3(1.0, 0.95, 0.8); // "Sunshine" color
 const float sunIntensity = 100.0; // 100 lux
 
@@ -162,53 +162,54 @@ void main() {
     
     vec3 finalColor;
     
-    if (DEBUG_MODE == 0) {
+    if (DEBUG_MODE == 0) 
+    {
         vec3 V = normalize(ubo.cameraPosition - worldPos);
         vec3 F0 = vec3(0.04); 
         F0 = mix(F0, albedo, metallic);
         
         vec3 Lo = vec3(0.0);
 
+        vec3 L = normalize(-sunDirection);
+        float NdotL = max(dot(N, L), 0.0);
+
+        if (NdotL > 0.0) 
         {
-    vec3 L = normalize(-sunDirection);
-    float NdotL = max(dot(N, L), 0.0);
-    if (NdotL > 0.0) {
-        vec4 lightSpacePosition = sunMatrices.lightProj * sunMatrices.lightView * vec4(worldPos, 1.0);
-        lightSpacePosition /= lightSpacePosition.w;
-        vec3 shadowMapUV = lightSpacePosition.xyz * 0.5 + 0.5;
-        //shadowMapUV.y = 1.0 - shadowMapUV.y;
+            vec4 lightSpacePosition = sunMatrices.lightProj * sunMatrices.lightView * vec4(worldPos, 1.0);
+            lightSpacePosition /= lightSpacePosition.w;
+            vec3 shadowMapUV = lightSpacePosition.xyz * 0.5 + 0.5;
+            shadowMapUV.z = lightSpacePosition.z; // Use z for depth comparison
+            //shadowMapUV.y = 1.0 - shadowMapUV.y;
 
-        // Manual shadow comparison
-        ivec2 shadowMapSize = textureSize(shadowMapSampler, 0);
-        ivec2 shadowTexel = ivec2(shadowMapUV.xy * shadowMapSize);
-        float shadowMapDepth = texelFetch(shadowMapSampler, shadowTexel, 0).r;
-        float lightDepth = shadowMapUV.z;
-        float bias = 0.001; // Test with a smaller bias
+            // Manual shadow comparison
+            ivec2 shadowMapSize = textureSize(shadowMapSampler, 0);
+            ivec2 shadowTexel = ivec2(shadowMapUV.xy * shadowMapSize);
+            float shadowMapDepth = texelFetch(shadowMapSampler, shadowTexel, 0).r;
+            float lightDepth = shadowMapUV.z;
+            float bias = max(0.005 * (1.0 - dot(N, L)), 0.001);
 
-        float shadowTerm = 1.0;
-        if (shadowMapDepth + bias < lightDepth)
-            shadowTerm = 0.0;
+            float shadowTerm = 1.0;
+            if (lightDepth > shadowMapDepth + bias)
+                shadowTerm = 0.0;
 
-        vec3 H = normalize(V + L);
+            vec3 H = normalize(V + L);
 
-        float NDF = DistributionGGX(N, H, roughness);
-        float G   = GeometrySmith(N, V, L, roughness, false);
-        vec3 F    = FresnelSchlick(max(dot(H, V), 0.0), F0);
+            float NDF = DistributionGGX(N, H, roughness);
+            float G   = GeometrySmith(N, V, L, roughness, false);
+            vec3 F    = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
-        vec3 kS = F;
-        vec3 kD = vec3(1.0) - kS;
-        kD *= 1.0 - metallic;
+            vec3 kS = F;
+            vec3 kD = vec3(1.0) - kS;
+            kD *= 1.0 - metallic;
 
-        vec3 numerator    = NDF * G * F;
-        float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
-        vec3 specular     = numerator / denominator;
+            vec3 numerator    = NDF * G * F;
+            float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL + 0.0001;
+            vec3 specular     = numerator / denominator;
 
-        vec3 radiance = sunColor * sunIntensity;
+            vec3 radiance = sunColor * sunIntensity;
 
-        Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadowTerm;
-    }
-}
-
+            Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadowTerm;
+        } 
         // Point lights
         for (uint i = 0; i < lightCount; i++) {
             Light light = lights[i];
@@ -246,7 +247,8 @@ void main() {
 
         finalColor = ambient + Lo;
     }
-    else if (DEBUG_MODE == 1) {
+    else if (DEBUG_MODE == 1) 
+    {
         finalColor = visualizeWorldSpaceGrid(worldPos);
 
         if (fragTexCoord.x < 0.2 && fragTexCoord.y < 0.1) {
@@ -266,6 +268,5 @@ void main() {
     else if (DEBUG_MODE == 2) {
         finalColor = normalize(worldPos) * 0.5 + 0.5;
     }
-    
     outColor = vec4(finalColor, 1.0);
 }

@@ -247,7 +247,9 @@ void Renderer::initVulkan()
 		.enableDepthTest(true)
 		.enableDepthWrite(true)
 		.setDepthCompareOp(VK_COMPARE_OP_LESS)
-        //.setRasterizationState(VK_CULL_MODE_NONE)
+        .setRasterizationState(VK_CULL_MODE_NONE)
+		.setDepthBiasConstantFactor(1.25f) // Adjust as needed for shadow bias
+		.setDepthBiasSlopeFactor(1.75f) // Adjust as needed for shadow bias
 		.setPushConstantRange(sizeof(glm::mat4) * 2) // View and projection matrices
 		.build();
 
@@ -884,7 +886,7 @@ void Renderer::renderShadowMap()
 {
     auto [aabbMin, aabbMax] = m_pModel->getAABB();
     glm::vec3 sceneCenter = (aabbMin + aabbMax) * 0.5f;
-    glm::vec3 lightDirection = glm::normalize(glm::vec3(0.f, -1.0f, 0.f));
+    glm::vec3 lightDirection = glm::normalize(glm::vec3(-0.2f, -1.0f, -0.4f));
 
     std::vector<glm::vec3> corners = {
         {aabbMin.x, aabbMin.y, aabbMin.z},
@@ -906,7 +908,7 @@ void Renderer::renderShadowMap()
     }
 
     float distance = maxProj - glm::dot(sceneCenter, lightDirection);
-    glm::vec3 lightPos = sceneCenter - lightDirection * distance;
+    glm::vec3 lightPos = sceneCenter - lightDirection * distance * 2.f;
     glm::vec3 up = glm::abs(glm::dot(lightDirection, glm::vec3(0.f, 1.f, 0.f))) > 0.99f
         ? glm::vec3(0.f, 0.f, 1.f)
         : glm::vec3(0.f, 1.f, 0.f);
@@ -921,14 +923,14 @@ void Renderer::renderShadowMap()
         maxLS = glm::max(maxLS, tr);
     }
 
-    float nearZ = 0.001f;
-    float farZ = maxLS.z - minLS.z;
+    float nearZ = 0.000f;
+    float farZ = (maxLS.z - minLS.z) * 1.5f;
     glm::mat4 lightProj = glm::ortho(
         minLS.x, maxLS.x,
         minLS.y, maxLS.y,
         nearZ, farZ
     );
-    lightProj[1][1] *= 1.0f;
+    lightProj[1][1] *= -1.0f;
 
     // Store the matrices in the Renderer class
     m_LightProj = lightProj;
@@ -1023,7 +1025,6 @@ void Renderer::renderShadowMap()
             0
         );
       
-
         vkCmdEndRendering(commandBuffer);
 
         // Transition shadow map image to shader read optimal for later use
@@ -1906,8 +1907,8 @@ void Renderer::createGBuffer()
 
 		// Create Shadow map image
 		m_GBuffers[i].pShadowMapImage = new Image(m_pDevice, m_VmaAllocator);
-		m_GBuffers[i].pShadowMapImage->createImage(m_pSwapChain->getExtent().width,
-			m_pSwapChain->getExtent().height,
+		m_GBuffers[i].pShadowMapImage->createImage(4096,
+			4096,
             depthFormat,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,

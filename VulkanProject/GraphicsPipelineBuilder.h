@@ -25,6 +25,8 @@ public:
 	GraphicsPipelineBuilder& setRasterizationState(VkCullModeFlags cullMode);
 	GraphicsPipelineBuilder& setPushConstantRange(size_t size);
 	GraphicsPipelineBuilder& setPushConstantFlags(VkShaderStageFlags stageFlags);
+	GraphicsPipelineBuilder& setDepthBiasConstantFactor(float value);
+	GraphicsPipelineBuilder& setDepthBiasSlopeFactor(float value);
 
     GraphicsPipeline* build();
 
@@ -47,5 +49,8 @@ private:
 	size_t m_PushConstantSize{ 0 };
 	VkShaderStageFlags m_PushConstantStageFlags{ VK_SHADER_STAGE_VERTEX_BIT };
     bool m_HasVertexInput{ false };
+    bool m_DepthBias{ false };
+	float m_DepthBiasConstantFactor{ 0.0f };
+    float m_DepthBiasSlopeFactor{ 0.0f };
 };
 

@@ -89,6 +89,20 @@ GraphicsPipelineBuilder& GraphicsPipelineBuilder::setPushConstantFlags(VkShaderS
 	return *this;
 }
 
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthBiasConstantFactor(float value)
+{
+	m_DepthBias = true;
+	m_DepthBiasConstantFactor = value;
+	return *this;
+}
+
+GraphicsPipelineBuilder& GraphicsPipelineBuilder::setDepthBiasSlopeFactor(float value)
+{
+	m_DepthBias = true;
+    m_DepthBiasSlopeFactor = value;
+    return *this;
+}
+
 GraphicsPipeline* GraphicsPipelineBuilder::build() {
     spdlog::debug("Building graphics pipeline with vertex shader: {} and fragment shader: {}", m_VertShaderPath, m_FragShaderPath);
 
@@ -169,7 +183,11 @@ GraphicsPipeline* GraphicsPipelineBuilder::build() {
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = m_CullMode;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.depthBiasEnable = m_DepthBias;
+	rasterizer.depthBiasConstantFactor = m_DepthBiasConstantFactor; // Optional
+	rasterizer.depthBiasClamp = 0.0f; // Optional
+	rasterizer.depthBiasSlopeFactor = m_DepthBiasSlopeFactor; // Optional
+	rasterizer.depthBiasConstantFactor = 0.0f; // Optional
 
     // Multisample state
     VkPipelineMultisampleStateCreateInfo multisampling{};
