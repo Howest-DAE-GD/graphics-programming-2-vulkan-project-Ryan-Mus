@@ -40,7 +40,7 @@ void Renderer::initialize()
     // Initialize the camera after Vulkan initialization
     m_pCamera = new Camera(
         m_pWindow->getGLFWwindow(),
-        glm::vec3(0.0f, 0.0f, 0.3f),  // Camera position
+        glm::vec3(-5.0f, 1.0f, -0.2f),  // Camera position
         glm::vec3(0.0f, 1.0f, 0.0f),  // World up vector (Y-up)
         0.0f, 0.0f                    // Initial yaw and pitch
     );
