@@ -154,9 +154,15 @@ foreach(SHADER ${SHADER_FILES})
     get_filename_component(SHADER_NAME ${SHADER} NAME)
     set(COMPILED_SHADER "${SHADER_OUT_DIR}/${SHADER_NAME}.spv")
     list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
+    # Find glslc from Vulkan SDK 1.3+ (use environment variable if available)
+    if(DEFINED ENV{VULKAN_SDK})
+        set(GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}/Bin/glslc.exe")
+    else()
+        set(GLSLC_EXECUTABLE "glslc") # Fallback to PATH
+    endif()
     add_custom_command(
         OUTPUT ${COMPILED_SHADER}
-        COMMAND C:/VulkanSDK/1.3.296.0/Bin/glslc.exe ${SHADER} -o ${COMPILED_SHADER}
+        COMMAND ${GLSLC_EXECUTABLE} ${SHADER} -o ${COMPILED_SHADER}
         COMMENT "Compiling shader ${SHADER}..."
         VERBATIM
     )

@@ -223,7 +223,7 @@ void Renderer::initVulkan()
         .setDevice(m_pDevice->get())
         .setDescriptorSetLayout(m_pDescriptorManager->getDescriptorSetLayout())
         .setSwapChainExtent(m_pSwapChain->getExtent())
-        .setColorFormats({ VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM}) // Multiple color formats
+        .setColorFormats({ VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R8G8B8A8_UNORM}) // Multiple color formats
         .setDepthFormat(findDepthFormat())
         .setVertexInputBindingDescription(Vertex::getBindingDescription())
         .setVertexInputAttributeDescriptions(Vertex::getAttributeDescriptions())
@@ -1900,12 +1900,12 @@ void Renderer::createGBuffer()
         m_GBuffers[i].pNormalImage = new Image(m_pDevice, m_VmaAllocator);
         m_GBuffers[i].pNormalImage->createImage(m_pSwapChain->getExtent().width,
             m_pSwapChain->getExtent().height,
-            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_FORMAT_R16G16B16A16_SFLOAT,
             VK_IMAGE_TILING_OPTIMAL,
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             VMA_MEMORY_USAGE_GPU_ONLY);
         m_GBuffers[i].normalImageView = m_GBuffers[i].pNormalImage->createImageView(
-            VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+            VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT);
 
         {
             VkCommandBuffer commandBuffer = m_pCommandPool->beginSingleTimeCommands();
